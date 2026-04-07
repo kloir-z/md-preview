@@ -352,7 +352,12 @@ function applyTheme(keyOrTheme) {{
 }}
 
 const savedTheme = localStorage.getItem("md-preview-theme") || "monokai";
-applyTheme(savedTheme);
+if (savedTheme === "custom") {{
+  const ct = localStorage.getItem("md-preview-custom-theme");
+  if (ct) applyTheme(JSON.parse(ct));
+}} else {{
+  applyTheme(savedTheme);
+}}
 </script>
 </head>
 <body>
@@ -445,6 +450,93 @@ hljs.highlightAll();
   }}
 
   renderThemeList();
+
+  // --- Color import ---
+  const colorImportArea = document.getElementById("colorImportArea");
+  const colorImportBtn = document.getElementById("colorImportBtn");
+  const colorImportError = document.getElementById("colorImportError");
+
+  function parseItermColors(xmlStr) {{
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlStr, "text/xml");
+    if (doc.querySelector("parsererror")) throw new Error("Invalid XML");
+    const dict = doc.querySelector("plist > dict");
+    if (!dict) throw new Error("Invalid plist structure");
+
+    const colors = {{}};
+    const keys = dict.children;
+    for (let i = 0; i < keys.length; i++) {{
+      if (keys[i].tagName === "key") {{
+        const name = keys[i].textContent;
+        const val = keys[i+1];
+        if (val && val.tagName === "dict") {{
+          if (name.includes("(Dark)") || name.includes("(Light)")) continue;
+          const entries = val.children;
+          const c = {{}};
+          for (let j = 0; j < entries.length; j++) {{
+            if (entries[j].tagName === "key") {{
+              c[entries[j].textContent] = entries[j+1] ? entries[j+1].textContent : "";
+            }}
+          }}
+          const r = parseFloat(c["Red Component"] || 0);
+          const g = parseFloat(c["Green Component"] || 0);
+          const b = parseFloat(c["Blue Component"] || 0);
+          const hex = "#" + [r, g, b].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+          colors[name] = hex;
+        }}
+      }}
+    }}
+    return colors;
+  }}
+
+  function lightenColor(hex, amount) {{
+    const r = Math.min(255, parseInt(hex.slice(1, 3), 16) + amount);
+    const g = Math.min(255, parseInt(hex.slice(3, 5), 16) + amount);
+    const b = Math.min(255, parseInt(hex.slice(5, 7), 16) + amount);
+    return "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
+  }}
+
+  function mapItermToTheme(colors) {{
+    const bg = colors["Background Color"] || "#272822";
+    const fg = colors["Foreground Color"] || "#d8d8d2";
+    const ansi0 = colors["Ansi 0 Color"] || "#1e1f1c";
+    const ansi3 = colors["Ansi 3 Color"] || "#d4a76a";
+    const ansi4 = colors["Ansi 4 Color"] || "#66c2b5";
+    const ansi5 = colors["Ansi 5 Color"] || "#ae9fcc";
+    const ansi8 = colors["Ansi 8 Color"] || "#3e3f3a";
+    return {{
+      name: "Custom",
+      "--bg": bg,
+      "--fg": fg,
+      "--code-bg": ansi0,
+      "--border": ansi8,
+      "--blockquote-fg": ansi8,
+      "--blockquote-border": ansi8,
+      "--link": ansi4,
+      "--file-path": ansi8,
+      "--table-stripe": lightenColor(bg, 10),
+      "--heading": ansi3,
+      "--accent": ansi5,
+    }};
+  }}
+
+  colorImportBtn.addEventListener("click", () => {{
+    colorImportError.style.display = "none";
+    try {{
+      const xml = colorImportArea.value.trim();
+      if (!xml) throw new Error("Paste .itermcolors XML first");
+      const colors = parseItermColors(xml);
+      const theme = mapItermToTheme(colors);
+      localStorage.setItem("md-preview-custom-theme", JSON.stringify(theme));
+      localStorage.setItem("md-preview-theme", "custom");
+      currentTheme = "custom";
+      applyTheme(theme);
+      renderThemeList();
+    }} catch (e) {{
+      colorImportError.textContent = e.message;
+      colorImportError.style.display = "block";
+    }}
+  }});
 }})();
 
 (function() {{
