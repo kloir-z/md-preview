@@ -101,6 +101,86 @@ HTML_TEMPLATE = """\
   /* checkbox style for task lists */
   li input[type="checkbox"] {{ margin-right: 0.5em; }}
 </style>
+<script>
+const THEMES = {{
+  monokai: {{
+    name: "Monokai",
+    "--bg": "#272822", "--fg": "#d8d8d2", "--border": "#3e3f3a",
+    "--code-bg": "#1e1f1c", "--blockquote-fg": "#8f908a",
+    "--blockquote-border": "#3e3f3a", "--link": "#66c2b5",
+    "--file-path": "#8f908a", "--table-stripe": "#2e2f2a",
+    "--heading": "#d4a76a", "--accent": "#ae9fcc",
+  }},
+  github_dark: {{
+    name: "GitHub Dark",
+    "--bg": "#0d1117", "--fg": "#e6edf3", "--border": "#30363d",
+    "--code-bg": "#161b22", "--blockquote-fg": "#8b949e",
+    "--blockquote-border": "#30363d", "--link": "#58a6ff",
+    "--file-path": "#8b949e", "--table-stripe": "#161b22",
+    "--heading": "#e6edf3", "--accent": "#bc8cff",
+  }},
+  dracula: {{
+    name: "Dracula",
+    "--bg": "#282a36", "--fg": "#f8f8f2", "--border": "#44475a",
+    "--code-bg": "#21222c", "--blockquote-fg": "#6272a4",
+    "--blockquote-border": "#44475a", "--link": "#8be9fd",
+    "--file-path": "#6272a4", "--table-stripe": "#2d2f3d",
+    "--heading": "#bd93f9", "--accent": "#ff79c6",
+  }},
+  nord: {{
+    name: "Nord",
+    "--bg": "#2e3440", "--fg": "#d8dee9", "--border": "#3b4252",
+    "--code-bg": "#272c36", "--blockquote-fg": "#7b88a1",
+    "--blockquote-border": "#3b4252", "--link": "#88c0d0",
+    "--file-path": "#7b88a1", "--table-stripe": "#333a47",
+    "--heading": "#81a1c1", "--accent": "#b48ead",
+  }},
+  solarized_dark: {{
+    name: "Solarized Dark",
+    "--bg": "#002b36", "--fg": "#839496", "--border": "#073642",
+    "--code-bg": "#01313f", "--blockquote-fg": "#657b83",
+    "--blockquote-border": "#073642", "--link": "#268bd2",
+    "--file-path": "#657b83", "--table-stripe": "#073642",
+    "--heading": "#b58900", "--accent": "#2aa198",
+  }},
+  gruvbox_dark: {{
+    name: "Gruvbox Dark",
+    "--bg": "#282828", "--fg": "#ebdbb2", "--border": "#3c3836",
+    "--code-bg": "#1d2021", "--blockquote-fg": "#a89984",
+    "--blockquote-border": "#3c3836", "--link": "#83a598",
+    "--file-path": "#a89984", "--table-stripe": "#302e2b",
+    "--heading": "#fabd2f", "--accent": "#d3869b",
+  }},
+  catppuccin_mocha: {{
+    name: "Catppuccin Mocha",
+    "--bg": "#1e1e2e", "--fg": "#cdd6f4", "--border": "#313244",
+    "--code-bg": "#181825", "--blockquote-fg": "#a6adc8",
+    "--blockquote-border": "#313244", "--link": "#89b4fa",
+    "--file-path": "#a6adc8", "--table-stripe": "#232336",
+    "--heading": "#cba6f7", "--accent": "#f5c2e7",
+  }},
+  tokyo_night: {{
+    name: "Tokyo Night",
+    "--bg": "#1a1b26", "--fg": "#a9b1d6", "--border": "#292e42",
+    "--code-bg": "#16161e", "--blockquote-fg": "#565f89",
+    "--blockquote-border": "#292e42", "--link": "#7aa2f7",
+    "--file-path": "#565f89", "--table-stripe": "#1f2030",
+    "--heading": "#bb9af7", "--accent": "#f7768e",
+  }},
+}};
+
+function applyTheme(key) {{
+  const theme = THEMES[key];
+  if (!theme) return;
+  const root = document.documentElement;
+  Object.keys(theme).forEach(k => {{
+    if (k.startsWith("--")) root.style.setProperty(k, theme[k]);
+  }});
+}}
+
+const savedTheme = localStorage.getItem("md-preview-theme") || "monokai";
+applyTheme(savedTheme);
+</script>
 </head>
 <body>
 <div class="file-path">{filepath}</div>
