@@ -100,6 +100,59 @@ HTML_TEMPLATE = """\
   }}
   /* checkbox style for task lists */
   li input[type="checkbox"] {{ margin-right: 0.5em; }}
+  /* settings panel */
+  .settings-btn {{
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+    color: var(--fg);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }}
+  .settings-btn:hover {{ opacity: 1; }}
+  .settings-panel {{
+    position: fixed;
+    bottom: 64px;
+    right: 20px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 0;
+    z-index: 1000;
+    min-width: 180px;
+    display: none;
+  }}
+  .settings-panel.open {{ display: block; }}
+  .settings-panel-title {{
+    padding: 4px 16px 8px;
+    font-size: 11px;
+    color: var(--file-path);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }}
+  .theme-item {{
+    padding: 6px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--fg);
+  }}
+  .theme-item:hover {{ background: var(--bg); }}
+  .theme-item.active {{ color: var(--link); }}
+  .theme-item .check {{ width: 16px; text-align: center; }}
 </style>
 <script>
 const THEMES = {{
@@ -183,6 +236,10 @@ applyTheme(savedTheme);
 </script>
 </head>
 <body>
+<button class="settings-btn" id="settingsBtn" title="Settings">&#9881;</button>
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-panel-title">Theme</div>
+</div>
 <div class="file-path">{filepath}</div>
 {content}
 <script>
