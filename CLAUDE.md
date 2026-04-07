@@ -2,6 +2,11 @@
 
 > **CLAUDE.md編集ポリシー**: このファイルは最小限に保つ。内容を追加・修正する前に、参照先ドキュメント（docs/ 等）に書くべきかユーザーに確認すること。
 
+## 行動指針
+
+- **サービス再起動**: `md_server.py` を変更した場合、動作確認のためサービスを再起動する。`powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"`
+- **コミット・プッシュ**: コード変更やドキュメント更新を行った後は、コミットとプッシュが必要かユーザーに確認すること。
+
 ## Project overview
 
 Markdown Preview Server -- ローカルのMarkdownファイルをブラウザでプレビューするPythonサーバー。ファイル変更時にポーリングで自動リロード。Monokaiテーマ。ポート3030で動作。
@@ -40,3 +45,14 @@ md_open.bat path/to/file.md
 ```
 
 依存: `pip install markdown`
+
+## Service
+
+NSSMでWindowsサービスとして登録済み。PC起動時に自動起動。
+
+```powershell
+# サービス管理（管理者権限が必要）
+powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+nssm status md-preview
+nssm edit md-preview
+```
