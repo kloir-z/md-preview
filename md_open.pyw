@@ -10,7 +10,9 @@ import sys
 import webbrowser
 from pathlib import Path
 
-PORT = 3030
+sys.path.insert(0, str(Path(__file__).parent))
+from config import DEFAULT_PORT as PORT
+
 SERVER_SCRIPT = str(Path(__file__).parent / "md_server.py")
 
 

@@ -13,6 +13,7 @@ Markdown Preview Server -- ローカルのMarkdownファイルをブラウザで
 
 ## Architecture
 
+- `config.py` -- 共通設定（`DEFAULT_PORT`等）。`md_server.py`と`md_open.pyw`から参照。
 - `md_server.py` -- HTTPサーバー本体。`markdown`ライブラリでHTML変換、highlight.jsでコードハイライト。MD5ハッシュによるポーリングで変更検知・自動リロード。
 - `md_open.pyw` -- Markdownファイルオープナー。サーバーが未起動なら自動起動し、ブラウザで開く。
 - `md_open.bat` -- `md_open.pyw`のバッチラッパー。右クリック「送る」等から使用。

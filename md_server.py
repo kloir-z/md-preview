@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse, unquote
 import mimetypes
 import markdown
 
-DEFAULT_PORT = 3030
+from config import DEFAULT_PORT
 STATIC_DIR = Path(__file__).parent / "static"
 
 HTML_TEMPLATE = """\
