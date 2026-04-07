@@ -121,38 +121,130 @@ HTML_TEMPLATE = """\
     transition: opacity 0.2s;
   }}
   .settings-btn:hover {{ opacity: 1; }}
-  .settings-panel {{
+  /* settings modal */
+  .settings-overlay {{
     position: fixed;
-    bottom: 64px;
-    right: 20px;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: none;
+  }}
+  .settings-overlay.open {{ display: block; }}
+  .settings-modal {{
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     background: var(--code-bg);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 8px 0;
-    z-index: 1000;
-    min-width: 180px;
+    padding: 24px;
+    z-index: 2001;
+    width: 440px;
+    max-height: 80vh;
+    overflow-y: auto;
     display: none;
+    color: var(--fg);
   }}
-  .settings-panel.open {{ display: block; }}
-  .settings-panel-title {{
-    padding: 4px 16px 8px;
+  .settings-modal.open {{ display: block; }}
+  .settings-modal-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }}
+  .settings-modal-header h3 {{
+    margin: 0;
+    color: var(--heading);
+  }}
+  .settings-close {{
+    background: none;
+    border: none;
+    color: var(--fg);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0.6;
+  }}
+  .settings-close:hover {{ opacity: 1; }}
+  .settings-section {{
+    margin-bottom: 20px;
+  }}
+  .settings-section-title {{
     font-size: 11px;
     color: var(--file-path);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    margin-bottom: 8px;
   }}
   .theme-item {{
-    padding: 6px 16px;
+    padding: 6px 8px;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 14px;
     color: var(--fg);
+    border-radius: 4px;
   }}
   .theme-item:hover {{ background: var(--bg); }}
   .theme-item.active {{ color: var(--link); }}
   .theme-item .check {{ width: 16px; text-align: center; }}
+  .settings-textarea {{
+    width: 100%;
+    height: 100px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 12px;
+    resize: vertical;
+    box-sizing: border-box;
+  }}
+  .settings-textarea:focus {{ outline: 1px solid var(--link); }}
+  .settings-btn-apply {{
+    margin-top: 8px;
+    padding: 6px 16px;
+    background: var(--link);
+    color: var(--bg);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }}
+  .settings-btn-apply:hover {{ opacity: 0.9; }}
+  .settings-error {{
+    color: #f44;
+    font-size: 12px;
+    margin-top: 4px;
+    display: none;
+  }}
+  .settings-ref-link {{
+    font-size: 12px;
+    margin-bottom: 8px;
+  }}
+  .settings-ref-link a {{ color: var(--link); }}
+  .settings-slider-row {{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }}
+  .settings-slider-row label {{
+    font-size: 13px;
+    min-width: 100px;
+  }}
+  .settings-slider-row input[type="range"] {{
+    flex: 1;
+  }}
+  .settings-slider-row .slider-value {{
+    font-size: 12px;
+    color: var(--file-path);
+    min-width: 50px;
+    text-align: right;
+  }}
   /* minimap */
   .minimap {{
     position: fixed;
@@ -250,8 +342,8 @@ const THEMES = {{
   }},
 }};
 
-function applyTheme(key) {{
-  const theme = THEMES[key];
+function applyTheme(keyOrTheme) {{
+  const theme = (typeof keyOrTheme === "string") ? THEMES[keyOrTheme] : keyOrTheme;
   if (!theme) return;
   const root = document.documentElement;
   Object.keys(theme).forEach(k => {{
@@ -269,48 +361,88 @@ applyTheme(savedTheme);
   <div class="minimap-viewport" id="minimapViewport"></div>
 </div>
 <button class="settings-btn" id="settingsBtn" title="Settings">&#9881;</button>
-<div class="settings-panel" id="settingsPanel">
-  <div class="settings-panel-title">Theme</div>
+<div class="settings-overlay" id="settingsOverlay"></div>
+<div class="settings-modal" id="settingsModal">
+  <div class="settings-modal-header">
+    <h3>Settings</h3>
+    <button class="settings-close" id="settingsClose">&times;</button>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-title">Theme</div>
+    <div id="themeList"></div>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-title">Import Colors</div>
+    <div class="settings-ref-link"><a href="https://iterm2colorschemes.com/" target="_blank" rel="noopener">iTerm2 Color Schemes</a> — .itermcolors plist format</div>
+    <textarea class="settings-textarea" id="colorImportArea" placeholder="Paste .itermcolors XML here..."></textarea>
+    <div class="settings-error" id="colorImportError"></div>
+    <button class="settings-btn-apply" id="colorImportBtn">Apply</button>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-title">Layout</div>
+    <div class="settings-slider-row">
+      <label>List margin</label>
+      <input type="range" id="listMarginSlider" min="0" max="32" value="16" step="1">
+      <span class="slider-value" id="listMarginValue">16px</span>
+    </div>
+    <div class="settings-slider-row">
+      <label>Max width</label>
+      <input type="range" id="maxWidthSlider" min="600" max="1200" value="800" step="50">
+      <span class="slider-value" id="maxWidthValue">800px</span>
+    </div>
+  </div>
 </div>
 <div class="file-path">{filepath}</div>
 {content}
 <script>
 hljs.highlightAll();
 
-// --- Theme settings panel ---
+// --- Settings modal ---
 (function() {{
-  const panel = document.getElementById("settingsPanel");
+  const modal = document.getElementById("settingsModal");
+  const overlay = document.getElementById("settingsOverlay");
   const btn = document.getElementById("settingsBtn");
+  const closeBtn = document.getElementById("settingsClose");
+  const themeList = document.getElementById("themeList");
   let currentTheme = localStorage.getItem("md-preview-theme") || "monokai";
 
+  function openModal() {{
+    modal.classList.add("open");
+    overlay.classList.add("open");
+    renderThemeList();
+  }}
+  function closeModal() {{
+    modal.classList.remove("open");
+    overlay.classList.remove("open");
+  }}
+
+  btn.addEventListener("click", (e) => {{
+    e.stopPropagation();
+    openModal();
+  }});
+  closeBtn.addEventListener("click", closeModal);
+  overlay.addEventListener("click", closeModal);
+
   function renderThemeList() {{
-    const items = panel.querySelectorAll(".theme-item");
-    items.forEach(el => el.remove());
-    Object.entries(THEMES).forEach(([key, theme]) => {{
+    themeList.innerHTML = "";
+    const allThemes = Object.assign({{}}, THEMES);
+    const customTheme = localStorage.getItem("md-preview-custom-theme");
+    if (customTheme) {{
+      allThemes.custom = Object.assign({{ name: "Custom" }}, JSON.parse(customTheme));
+    }}
+    Object.entries(allThemes).forEach(([key, theme]) => {{
       const div = document.createElement("div");
       div.className = "theme-item" + (key === currentTheme ? " active" : "");
       div.innerHTML = '<span class="check">' + (key === currentTheme ? "&#10003;" : "") + "</span>" + theme.name;
       div.addEventListener("click", () => {{
         currentTheme = key;
-        applyTheme(key);
+        applyTheme(key === "custom" && customTheme ? JSON.parse(customTheme) : THEMES[key]);
         localStorage.setItem("md-preview-theme", key);
         renderThemeList();
       }});
-      panel.appendChild(div);
+      themeList.appendChild(div);
     }});
   }}
-
-  btn.addEventListener("click", (e) => {{
-    e.stopPropagation();
-    panel.classList.toggle("open");
-    if (panel.classList.contains("open")) renderThemeList();
-  }});
-
-  document.addEventListener("click", (e) => {{
-    if (!panel.contains(e.target) && e.target !== btn) {{
-      panel.classList.remove("open");
-    }}
-  }});
 
   renderThemeList();
 }})();
