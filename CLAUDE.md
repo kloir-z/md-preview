@@ -9,12 +9,16 @@
 
 ## Project overview
 
-Markdown Preview Server -- ローカルのMarkdownファイルをブラウザでプレビューするPythonサーバー。ファイル変更時にポーリングで自動リロード。Monokaiテーマ。ポート3030で動作。
+Markdown Preview Server -- ローカルのMarkdownファイルをブラウザでプレビューするPythonサーバー。ファイル変更時にポーリングで自動リロード。複数テーマ対応 + カスタムカラーインポート。ポート3030で動作。
 
 ## Architecture
 
 - `config.py` -- 共通設定（`DEFAULT_PORT`等）。`md_server.py`と`md_open.pyw`から参照。
-- `md_server.py` -- HTTPサーバー本体。`markdown`ライブラリでHTML変換、highlight.jsでコードハイライト。MD5ハッシュによるポーリングで変更検知・自動リロード。
+- `md_server.py` -- HTTPサーバー本体。`HTML_TEMPLATE`内にCSS/HTML/JSをすべて含む。`markdown`ライブラリでHTML変換、highlight.jsでコードハイライト。MD5ハッシュによるポーリングで変更検知・自動リロード。
+  - **テーマ**: 8種のダーク系プリセット + .itermcolorsカラーインポートによるカスタムテーマ。CSS変数ベース。
+  - **ミニマップ**: 画面右端にVSCodeスタイルのミニマップ（CSS Transform方式でDOMクローンを縮小表示）。クリック/ドラッグでスクロール。
+  - **設定モーダル**: テーマ選択（ドロップダウン）、カラーインポート（.itermcolors XML貼り付け）、見出し色カスタマイズ（H1-H4、パレットから選択+シャッフル）、レイアウト設定（箇条書きマージン・最大横幅スライダー）。
+  - **永続化**: すべての設定をlocalStorageに保存、ページロード時に即座に適用。
 - `md_open.pyw` -- Markdownファイルオープナー。サーバーが未起動なら自動起動し、ブラウザで開く。
 - `md_open.bat` -- `md_open.pyw`のバッチラッパー。右クリック「送る」等から使用。
 - `static/` -- highlight.min.js、monokai.min.css（ローカル配置）。
@@ -31,6 +35,8 @@ Markdown Preview Server -- ローカルのMarkdownファイルをブラウザで
 - WebSocketではなくMD5ポーリング（1秒間隔）で変更検知。stdlib依存のみでシンプルに保つ。
 - highlight.jsとmonokaiテーマはCDNではなくローカル配置（オフライン動作対応）。
 - `md_open.pyw`は`DETACHED_PROCESS`フラグでサーバーをバックグラウンド起動。
+- UIはすべて`HTML_TEMPLATE`内に埋め込み（単一ファイル構成）。新規HTMLファイルなし。
+- ミニマップはCSS Transform方式（Canvas描画ではない）。テーマ変更に自動追従。
 
 ## Development
 

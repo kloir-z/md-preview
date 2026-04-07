@@ -2,10 +2,10 @@
 Markdown Preview Server
 - ローカルHTTPサーバーでMarkdownファイルをHTMLレンダリング
 - http://localhost:3030/view?path=C:/path/to/file.md でアクセス
-- ファイル変更時に自動リロード (WebSocket)
+- ファイル変更時に自動リロード (MD5ポーリング)
 
 Usage:
-    python scripts/md_server.py [--port 3030]
+    python md_server.py [--port 3030]
 """
 
 import argparse
