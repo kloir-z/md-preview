@@ -48,6 +48,7 @@ HTML_TEMPLATE = """\
     --table-stripe: #2e2f2a;
     --heading: #d4a76a;
     --accent: #ae9fcc;
+    --list-margin: 16px;
   }}
   body {{
     max-width: 800px;
@@ -100,6 +101,7 @@ HTML_TEMPLATE = """\
   }}
   /* checkbox style for task lists */
   li input[type="checkbox"] {{ margin-right: 0.5em; }}
+  li {{ margin-bottom: var(--list-margin); }}
   /* settings panel */
   .settings-btn {{
     position: fixed;
@@ -358,9 +360,15 @@ if (savedTheme === "custom") {{
 }} else {{
   applyTheme(savedTheme);
 }}
+const savedListMargin = localStorage.getItem("md-preview-list-margin");
+if (savedListMargin) document.documentElement.style.setProperty("--list-margin", savedListMargin + "px");
+const savedMaxWidth = localStorage.getItem("md-preview-max-width");
 </script>
 </head>
 <body>
+<script>
+if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
+</script>
 <div class="minimap" id="minimap">
   <div class="minimap-content" id="minimapContent"></div>
   <div class="minimap-viewport" id="minimapViewport"></div>
@@ -536,6 +544,38 @@ hljs.highlightAll();
       colorImportError.textContent = e.message;
       colorImportError.style.display = "block";
     }}
+  }});
+
+  // --- Layout settings ---
+  const listMarginSlider = document.getElementById("listMarginSlider");
+  const listMarginValue = document.getElementById("listMarginValue");
+  const maxWidthSlider = document.getElementById("maxWidthSlider");
+  const maxWidthValue = document.getElementById("maxWidthValue");
+
+  const savedListMargin = localStorage.getItem("md-preview-list-margin");
+  const savedMaxWidth = localStorage.getItem("md-preview-max-width");
+
+  if (savedListMargin !== null) {{
+    listMarginSlider.value = savedListMargin;
+    listMarginValue.textContent = savedListMargin + "px";
+  }}
+  if (savedMaxWidth !== null) {{
+    maxWidthSlider.value = savedMaxWidth;
+    maxWidthValue.textContent = savedMaxWidth + "px";
+  }}
+
+  listMarginSlider.addEventListener("input", () => {{
+    const val = listMarginSlider.value;
+    listMarginValue.textContent = val + "px";
+    document.documentElement.style.setProperty("--list-margin", val + "px");
+    localStorage.setItem("md-preview-list-margin", val);
+  }});
+
+  maxWidthSlider.addEventListener("input", () => {{
+    const val = maxWidthSlider.value;
+    maxWidthValue.textContent = val + "px";
+    document.body.style.maxWidth = val + "px";
+    localStorage.setItem("md-preview-max-width", val);
   }});
 }})();
 
