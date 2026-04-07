@@ -329,6 +329,49 @@ hljs.highlightAll();
     }} catch(e) {{}}
   }}, 1000);
 }})();
+
+// --- Minimap ---
+(function() {{
+  const minimap = document.getElementById("minimap");
+  const minimapContent = document.getElementById("minimapContent");
+  const minimapViewport = document.getElementById("minimapViewport");
+
+  function buildMinimapContent() {{
+    minimapContent.innerHTML = "";
+    const contentSource = document.querySelector(".file-path");
+    let el = contentSource;
+    while (el) {{
+      if (el !== minimap && el.id !== "settingsBtn" && el.id !== "settingsModal" && el.id !== "settingsOverlay") {{
+        minimapContent.appendChild(el.cloneNode(true));
+      }}
+      el = el.nextElementSibling;
+    }}
+  }}
+
+  buildMinimapContent();
+
+  const scale = 80 / 800;
+  minimapContent.style.transform = "scale(" + scale + ")";
+
+  function updateViewport() {{
+    const docHeight = document.documentElement.scrollHeight;
+    const viewHeight = window.innerHeight;
+    const scrollTop = window.scrollY;
+    const minimapHeight = minimap.clientHeight;
+    const contentScaledHeight = minimapContent.scrollHeight * scale;
+    const effectiveHeight = Math.min(minimapHeight, contentScaledHeight);
+
+    const vpTop = (scrollTop / docHeight) * effectiveHeight;
+    const vpHeight = (viewHeight / docHeight) * effectiveHeight;
+
+    minimapViewport.style.top = vpTop + "px";
+    minimapViewport.style.height = vpHeight + "px";
+  }}
+
+  window.addEventListener("scroll", updateViewport);
+  window.addEventListener("resize", updateViewport);
+  updateViewport();
+}})();
 </script>
 </body>
 </html>
