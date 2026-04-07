@@ -153,6 +153,34 @@ HTML_TEMPLATE = """\
   .theme-item:hover {{ background: var(--bg); }}
   .theme-item.active {{ color: var(--link); }}
   .theme-item .check {{ width: 16px; text-align: center; }}
+  /* minimap */
+  .minimap {{
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 80px;
+    height: 100vh;
+    background: var(--code-bg);
+    border-left: 1px solid var(--border);
+    overflow: hidden;
+    z-index: 500;
+    cursor: pointer;
+  }}
+  .minimap-content {{
+    transform-origin: top left;
+    pointer-events: none;
+    width: 800px;
+    overflow: hidden;
+  }}
+  .minimap-viewport {{
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    pointer-events: none;
+    min-height: 10px;
+  }}
 </style>
 <script>
 const THEMES = {{
@@ -236,6 +264,10 @@ applyTheme(savedTheme);
 </script>
 </head>
 <body>
+<div class="minimap" id="minimap">
+  <div class="minimap-content" id="minimapContent"></div>
+  <div class="minimap-viewport" id="minimapViewport"></div>
+</div>
 <button class="settings-btn" id="settingsBtn" title="Settings">&#9881;</button>
 <div class="settings-panel" id="settingsPanel">
   <div class="settings-panel-title">Theme</div>
