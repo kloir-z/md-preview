@@ -452,6 +452,7 @@ hljs.highlightAll();
         applyTheme(key === "custom" && customTheme ? JSON.parse(customTheme) : THEMES[key]);
         localStorage.setItem("md-preview-theme", key);
         renderThemeList();
+        if (window._rebuildMinimap) window._rebuildMinimap();
       }});
       themeList.appendChild(div);
     }});
@@ -540,6 +541,7 @@ hljs.highlightAll();
       currentTheme = "custom";
       applyTheme(theme);
       renderThemeList();
+      if (window._rebuildMinimap) window._rebuildMinimap();
     }} catch (e) {{
       colorImportError.textContent = e.message;
       colorImportError.style.display = "block";
@@ -613,6 +615,7 @@ hljs.highlightAll();
   }}
 
   buildMinimapContent();
+  window._rebuildMinimap = function() {{ buildMinimapContent(); }};
 
   const scale = 80 / 800;
   minimapContent.style.transform = "scale(" + scale + ")";
