@@ -47,6 +47,10 @@ HTML_TEMPLATE = """\
     --file-path: #8f908a;
     --table-stripe: #2e2f2a;
     --heading: #d4a76a;
+    --h1-color: var(--heading);
+    --h2-color: var(--heading);
+    --h3-color: var(--heading);
+    --h4-color: var(--heading);
     --accent: #ae9fcc;
     --list-margin: 16px;
   }}
@@ -61,15 +65,16 @@ HTML_TEMPLATE = """\
   }}
   a {{ color: var(--link); }}
   h1, h2, h3, h4, h5, h6 {{ margin-top: 1.5em; margin-bottom: 0.5em; }}
-  h1 {{ color: var(--heading); border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }}
-  h2 {{ color: var(--heading); border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }}
-  h3, h4, h5, h6 {{ color: var(--heading); }}
+  h1 {{ color: var(--h1-color); border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }}
+  h2 {{ color: var(--h2-color); border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }}
+  h3 {{ color: var(--h3-color); }}
+  h4, h5, h6 {{ color: var(--h4-color); }}
   code {{
     background: var(--code-bg);
     color: var(--accent);
     padding: 0.2em 0.4em;
     border-radius: 3px;
-    font-size: 85%;
+    font-size: 97%;
   }}
   pre {{
     background: var(--code-bg);
@@ -106,7 +111,7 @@ HTML_TEMPLATE = """\
   .settings-btn {{
     position: fixed;
     bottom: 20px;
-    right: 20px;
+    right: 100px;
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -179,19 +184,18 @@ HTML_TEMPLATE = """\
     letter-spacing: 0.05em;
     margin-bottom: 8px;
   }}
-  .theme-item {{
+  .theme-select {{
+    width: 100%;
     padding: 6px 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
     font-size: 14px;
     color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 4px;
+    cursor: pointer;
+    outline: none;
   }}
-  .theme-item:hover {{ background: var(--bg); }}
-  .theme-item.active {{ color: var(--link); }}
-  .theme-item .check {{ width: 16px; text-align: center; }}
+  .theme-select:focus {{ border-color: var(--link); }}
   .settings-textarea {{
     width: 100%;
     height: 100px;
@@ -247,6 +251,37 @@ HTML_TEMPLATE = """\
     min-width: 50px;
     text-align: right;
   }}
+  .settings-color-row {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }}
+  .settings-color-row label {{
+    font-size: 13px;
+    min-width: 28px;
+  }}
+  .heading-color-select {{
+    flex: 1;
+    padding: 4px 6px;
+    font-size: 13px;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    outline: none;
+  }}
+  .heading-color-select:focus {{ border-color: var(--link); }}
+  .color-swatch {{
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 4px;
+    border: 1px solid rgba(255,255,255,0.2);
+  }}
   /* minimap */
   .minimap {{
     position: fixed;
@@ -261,17 +296,18 @@ HTML_TEMPLATE = """\
     cursor: pointer;
   }}
   .minimap-content {{
+    position: absolute;
+    top: 0;
+    left: 0;
     transform-origin: top left;
     pointer-events: none;
-    width: 800px;
-    overflow: hidden;
   }}
   .minimap-viewport {{
     position: absolute;
     left: 0;
     right: 0;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
     pointer-events: none;
     min-height: 10px;
   }}
@@ -360,6 +396,10 @@ if (savedTheme === "custom") {{
 }} else {{
   applyTheme(savedTheme);
 }}
+["--h1-color","--h2-color","--h3-color","--h4-color"].forEach(k => {{
+  const v = localStorage.getItem("md-preview-" + k);
+  if (v) document.documentElement.style.setProperty(k, v);
+}});
 const savedListMargin = localStorage.getItem("md-preview-list-margin");
 if (savedListMargin) document.documentElement.style.setProperty("--list-margin", savedListMargin + "px");
 const savedMaxWidth = localStorage.getItem("md-preview-max-width");
@@ -382,7 +422,7 @@ if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
   </div>
   <div class="settings-section">
     <div class="settings-section-title">Theme</div>
-    <div id="themeList"></div>
+    <select class="theme-select" id="themeSelect"></select>
   </div>
   <div class="settings-section">
     <div class="settings-section-title">Import Colors</div>
@@ -390,6 +430,13 @@ if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
     <textarea class="settings-textarea" id="colorImportArea" placeholder="Paste .itermcolors XML here..."></textarea>
     <div class="settings-error" id="colorImportError"></div>
     <button class="settings-btn-apply" id="colorImportBtn">Apply</button>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center;">Heading Colors <button class="settings-btn-apply" id="shuffleHeadingBtn" style="margin:0;padding:2px 10px;font-size:11px;">Shuffle</button></div>
+    <div class="settings-color-row"><label>H1</label><select class="heading-color-select" id="h1Color"></select></div>
+    <div class="settings-color-row"><label>H2</label><select class="heading-color-select" id="h2Color"></select></div>
+    <div class="settings-color-row"><label>H3</label><select class="heading-color-select" id="h3Color"></select></div>
+    <div class="settings-color-row"><label>H4</label><select class="heading-color-select" id="h4Color"></select></div>
   </div>
   <div class="settings-section">
     <div class="settings-section-title">Layout</div>
@@ -416,13 +463,12 @@ hljs.highlightAll();
   const overlay = document.getElementById("settingsOverlay");
   const btn = document.getElementById("settingsBtn");
   const closeBtn = document.getElementById("settingsClose");
-  const themeList = document.getElementById("themeList");
+  const themeSelect = document.getElementById("themeSelect");
   let currentTheme = localStorage.getItem("md-preview-theme") || "monokai";
 
   function openModal() {{
     modal.classList.add("open");
     overlay.classList.add("open");
-    renderThemeList();
   }}
   function closeModal() {{
     modal.classList.remove("open");
@@ -436,29 +482,32 @@ hljs.highlightAll();
   closeBtn.addEventListener("click", closeModal);
   overlay.addEventListener("click", closeModal);
 
-  function renderThemeList() {{
-    themeList.innerHTML = "";
+  function renderThemeSelect() {{
+    themeSelect.innerHTML = "";
     const allThemes = Object.assign({{}}, THEMES);
     const customTheme = localStorage.getItem("md-preview-custom-theme");
     if (customTheme) {{
       allThemes.custom = Object.assign({{ name: "Custom" }}, JSON.parse(customTheme));
     }}
     Object.entries(allThemes).forEach(([key, theme]) => {{
-      const div = document.createElement("div");
-      div.className = "theme-item" + (key === currentTheme ? " active" : "");
-      div.innerHTML = '<span class="check">' + (key === currentTheme ? "&#10003;" : "") + "</span>" + theme.name;
-      div.addEventListener("click", () => {{
-        currentTheme = key;
-        applyTheme(key === "custom" && customTheme ? JSON.parse(customTheme) : THEMES[key]);
-        localStorage.setItem("md-preview-theme", key);
-        renderThemeList();
-        if (window._rebuildMinimap) window._rebuildMinimap();
-      }});
-      themeList.appendChild(div);
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = theme.name;
+      if (key === currentTheme) opt.selected = true;
+      themeSelect.appendChild(opt);
     }});
   }}
 
-  renderThemeList();
+  themeSelect.addEventListener("change", () => {{
+    const key = themeSelect.value;
+    currentTheme = key;
+    const customTheme = localStorage.getItem("md-preview-custom-theme");
+    applyTheme(key === "custom" && customTheme ? JSON.parse(customTheme) : THEMES[key]);
+    localStorage.setItem("md-preview-theme", key);
+    if (window._rebuildMinimap) window._rebuildMinimap();
+  }});
+
+  renderThemeSelect();
 
   // --- Color import ---
   const colorImportArea = document.getElementById("colorImportArea");
@@ -535,17 +584,119 @@ hljs.highlightAll();
       const xml = colorImportArea.value.trim();
       if (!xml) throw new Error("Paste .itermcolors XML first");
       const colors = parseItermColors(xml);
+      // Save full palette for heading color selects
+      localStorage.setItem("md-preview-palette", JSON.stringify(colors));
       const theme = mapItermToTheme(colors);
       localStorage.setItem("md-preview-custom-theme", JSON.stringify(theme));
       localStorage.setItem("md-preview-theme", "custom");
       currentTheme = "custom";
       applyTheme(theme);
-      renderThemeList();
+      renderThemeSelect();
+      // Auto-assign heading colors from palette (skip bg-like colors)
+      const bg = colors["Background Color"] || "";
+      const candidates = Object.entries(colors)
+        .filter(([name, hex]) => !name.includes("Background") && hex !== bg
+          && !name.includes("Ansi 0") && !name.includes("Ansi 8"))
+        .map(([name, hex]) => hex);
+      // Pick 4 distinct colors spread across the palette
+      const unique = [...new Set(candidates)];
+      const pick = (i) => unique.length > 0 ? unique[i % unique.length] : theme["--heading"];
+      const step = Math.max(1, Math.floor(unique.length / 4));
+      const hVars = ["--h1-color", "--h2-color", "--h3-color", "--h4-color"];
+      hVars.forEach((v, i) => {{
+        const c = pick(i * step);
+        document.documentElement.style.setProperty(v, c);
+        localStorage.setItem("md-preview-" + v, c);
+      }});
+      buildHeadingSelects();
       if (window._rebuildMinimap) window._rebuildMinimap();
     }} catch (e) {{
       colorImportError.textContent = e.message;
       colorImportError.style.display = "block";
     }}
+  }});
+
+  // --- Heading color settings ---
+  const headingDefs = [
+    {{ id: "h1Color", cssVar: "--h1-color" }},
+    {{ id: "h2Color", cssVar: "--h2-color" }},
+    {{ id: "h3Color", cssVar: "--h3-color" }},
+    {{ id: "h4Color", cssVar: "--h4-color" }},
+  ];
+
+  function getPalette() {{
+    // Build palette from current theme's CSS variables + imported palette
+    const palette = [];
+    const imported = localStorage.getItem("md-preview-palette");
+    if (imported) {{
+      try {{
+        const p = JSON.parse(imported);
+        Object.entries(p).forEach(([name, hex]) => {{
+          palette.push({{ name: name, hex: hex }});
+        }});
+      }} catch(e) {{}}
+    }}
+    if (palette.length === 0) {{
+      // Fallback: extract from current theme
+      const root = getComputedStyle(document.documentElement);
+      const vars = ["--fg","--heading","--link","--accent","--blockquote-fg","--border","--bg","--code-bg"];
+      const names = ["Foreground","Heading","Link","Accent","Muted","Border","Background","Code BG"];
+      vars.forEach((v, i) => {{
+        const val = root.getPropertyValue(v).trim();
+        if (val) palette.push({{ name: names[i], hex: val }});
+      }});
+    }}
+    return palette;
+  }}
+
+  function buildHeadingSelects() {{
+    const palette = getPalette();
+    headingDefs.forEach(h => {{
+      const sel = document.getElementById(h.id);
+      const saved = localStorage.getItem("md-preview-" + h.cssVar);
+      sel.innerHTML = "";
+      palette.forEach(p => {{
+        const opt = document.createElement("option");
+        opt.value = p.hex;
+        opt.textContent = p.name + " (" + p.hex + ")";
+        opt.style.color = p.hex;
+        if (saved && saved === p.hex) opt.selected = true;
+        sel.appendChild(opt);
+      }});
+      // If saved value not in palette, still apply it
+      if (saved) {{
+        sel.value = saved;
+        document.documentElement.style.setProperty(h.cssVar, saved);
+      }}
+    }});
+  }}
+
+  headingDefs.forEach(h => {{
+    document.getElementById(h.id).addEventListener("change", (e) => {{
+      const val = e.target.value;
+      document.documentElement.style.setProperty(h.cssVar, val);
+      localStorage.setItem("md-preview-" + h.cssVar, val);
+    }});
+  }});
+
+  buildHeadingSelects();
+
+  document.getElementById("shuffleHeadingBtn").addEventListener("click", () => {{
+    const palette = getPalette();
+    // Exclude dark/bg-like colors
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+    const candidates = palette.filter(p => p.hex !== bg
+      && !p.name.includes("Background") && !p.name.includes("Ansi 0 ") && !p.name.includes("Ansi 8 "));
+    if (candidates.length === 0) return;
+    // Shuffle and pick 4
+    const shuffled = candidates.slice().sort(() => Math.random() - 0.5);
+    const hVars = ["--h1-color", "--h2-color", "--h3-color", "--h4-color"];
+    hVars.forEach((v, i) => {{
+      const c = shuffled[i % shuffled.length].hex;
+      document.documentElement.style.setProperty(v, c);
+      localStorage.setItem("md-preview-" + v, c);
+    }});
+    buildHeadingSelects();
   }});
 
   // --- Layout settings ---
@@ -571,6 +722,7 @@ hljs.highlightAll();
     listMarginValue.textContent = val + "px";
     document.documentElement.style.setProperty("--list-margin", val + "px");
     localStorage.setItem("md-preview-list-margin", val);
+    if (window._rebuildMinimap) window._rebuildMinimap();
   }});
 
   maxWidthSlider.addEventListener("input", () => {{
@@ -578,6 +730,7 @@ hljs.highlightAll();
     maxWidthValue.textContent = val + "px";
     document.body.style.maxWidth = val + "px";
     localStorage.setItem("md-preview-max-width", val);
+    if (window._rebuildMinimap) window._rebuildMinimap();
   }});
 }})();
 
@@ -601,6 +754,8 @@ hljs.highlightAll();
   const minimap = document.getElementById("minimap");
   const minimapContent = document.getElementById("minimapContent");
   const minimapViewport = document.getElementById("minimapViewport");
+  const MINIMAP_WIDTH = 80;
+  var scaleX, contentOriginalHeight;
 
   function buildMinimapContent() {{
     minimapContent.innerHTML = "";
@@ -614,42 +769,81 @@ hljs.highlightAll();
     }}
   }}
 
-  buildMinimapContent();
-  window._rebuildMinimap = function() {{ buildMinimapContent(); }};
+  function applyScale() {{
+    const contentWidth = parseInt(document.body.style.maxWidth) || 800;
+    minimapContent.style.width = contentWidth + "px";
+    // Reset transform to measure true height
+    minimapContent.style.transform = "none";
+    contentOriginalHeight = minimapContent.scrollHeight;
+    // Scale to fit: use whichever is smaller — width-fit or height-fit
+    const scaleByWidth = MINIMAP_WIDTH / contentWidth;
+    const minimapH = minimap.clientHeight;
+    const scaleByHeight = minimapH / contentOriginalHeight;
+    scaleX = Math.min(scaleByWidth, scaleByHeight);
+    minimapContent.style.transform = "scale(" + scaleX + ")";
+  }}
 
-  const scale = 80 / 800;
-  minimapContent.style.transform = "scale(" + scale + ")";
+  buildMinimapContent();
+  applyScale();
+
+  window._rebuildMinimap = function() {{ buildMinimapContent(); applyScale(); updateViewport(); }};
+  window._updateMinimapScale = function() {{ applyScale(); updateViewport(); }};
 
   function updateViewport() {{
     const docHeight = document.documentElement.scrollHeight;
     const viewHeight = window.innerHeight;
     const scrollTop = window.scrollY;
-    const minimapHeight = minimap.clientHeight;
-    const contentScaledHeight = minimapContent.scrollHeight * scale;
-    const effectiveHeight = Math.min(minimapHeight, contentScaledHeight);
+    const maxDocScroll = docHeight - viewHeight;
+    const minimapH = minimap.clientHeight;
+    const scaledContentH = contentOriginalHeight * scaleX;
 
-    const vpTop = (scrollTop / docHeight) * effectiveHeight;
-    const vpHeight = (viewHeight / docHeight) * effectiveHeight;
+    // Viewport indicator size in scaled pixels
+    const vpHeight = Math.max(10, (viewHeight / docHeight) * scaledContentH);
 
-    minimapViewport.style.top = vpTop + "px";
-    minimapViewport.style.height = vpHeight + "px";
+    if (scaledContentH <= minimapH) {{
+      // Entire document fits in minimap — no minimap scrolling
+      minimapContent.style.top = "0px";
+      const vpTop = maxDocScroll > 0 ? (scrollTop / maxDocScroll) * (scaledContentH - vpHeight) : 0;
+      minimapViewport.style.top = Math.max(0, vpTop) + "px";
+      minimapViewport.style.height = vpHeight + "px";
+    }} else {{
+      // Document overflows minimap — scroll minimap proportionally
+      const scrollFraction = maxDocScroll > 0 ? scrollTop / maxDocScroll : 0;
+      const maxContentOffset = scaledContentH - minimapH;
+      const contentOffset = scrollFraction * maxContentOffset;
+      // top is in pre-transform coords, so divide by scale
+      minimapContent.style.top = -(contentOffset / scaleX) + "px";
+
+      const vpTop = scrollFraction * (minimapH - vpHeight);
+      minimapViewport.style.top = Math.max(0, vpTop) + "px";
+      minimapViewport.style.height = vpHeight + "px";
+    }}
   }}
 
   window.addEventListener("scroll", updateViewport);
-  window.addEventListener("resize", updateViewport);
+  window.addEventListener("resize", function() {{ applyScale(); updateViewport(); }});
   updateViewport();
 
-  // Click to scroll
+  // Click/drag to scroll — clicked position becomes viewport center
   function scrollToMinimapPos(clientY) {{
     const rect = minimap.getBoundingClientRect();
     const y = clientY - rect.top;
-    const contentScaledHeight = minimapContent.scrollHeight * scale;
-    const effectiveHeight = Math.min(minimap.clientHeight, contentScaledHeight);
-    const ratio = y / effectiveHeight;
+    const minimapH = minimap.clientHeight;
+    const scaledContentH = contentOriginalHeight * scaleX;
     const docHeight = document.documentElement.scrollHeight;
     const viewHeight = window.innerHeight;
-    const targetScroll = ratio * docHeight - viewHeight / 2;
-    window.scrollTo({{ top: targetScroll, behavior: "instant" }});
+    const maxDocScroll = docHeight - viewHeight;
+
+    // Map click position to document fraction
+    var docFraction;
+    if (scaledContentH <= minimapH) {{
+      docFraction = scaledContentH > 0 ? y / scaledContentH : 0;
+    }} else {{
+      docFraction = y / minimapH;
+    }}
+    // Scroll so the clicked position is at the center of the viewport
+    const targetScroll = docFraction * docHeight - viewHeight / 2;
+    window.scrollTo({{ top: Math.max(0, Math.min(targetScroll, maxDocScroll)), behavior: "instant" }});
   }}
 
   minimap.addEventListener("mousedown", function(e) {{
