@@ -245,6 +245,44 @@ applyTheme(savedTheme);
 <script>
 hljs.highlightAll();
 
+// --- Theme settings panel ---
+(function() {{
+  const panel = document.getElementById("settingsPanel");
+  const btn = document.getElementById("settingsBtn");
+  let currentTheme = localStorage.getItem("md-preview-theme") || "monokai";
+
+  function renderThemeList() {{
+    const items = panel.querySelectorAll(".theme-item");
+    items.forEach(el => el.remove());
+    Object.entries(THEMES).forEach(([key, theme]) => {{
+      const div = document.createElement("div");
+      div.className = "theme-item" + (key === currentTheme ? " active" : "");
+      div.innerHTML = '<span class="check">' + (key === currentTheme ? "&#10003;" : "") + "</span>" + theme.name;
+      div.addEventListener("click", () => {{
+        currentTheme = key;
+        applyTheme(key);
+        localStorage.setItem("md-preview-theme", key);
+        renderThemeList();
+      }});
+      panel.appendChild(div);
+    }});
+  }}
+
+  btn.addEventListener("click", (e) => {{
+    e.stopPropagation();
+    panel.classList.toggle("open");
+    if (panel.classList.contains("open")) renderThemeList();
+  }});
+
+  document.addEventListener("click", (e) => {{
+    if (!panel.contains(e.target) && e.target !== btn) {{
+      panel.classList.remove("open");
+    }}
+  }});
+
+  renderThemeList();
+}})();
+
 (function() {{
   let hash = "{content_hash}";
   const path = "{filepath_js}";
