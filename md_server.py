@@ -371,6 +371,33 @@ hljs.highlightAll();
   window.addEventListener("scroll", updateViewport);
   window.addEventListener("resize", updateViewport);
   updateViewport();
+
+  // Click to scroll
+  function scrollToMinimapPos(clientY) {{
+    const rect = minimap.getBoundingClientRect();
+    const y = clientY - rect.top;
+    const contentScaledHeight = minimapContent.scrollHeight * scale;
+    const effectiveHeight = Math.min(minimap.clientHeight, contentScaledHeight);
+    const ratio = y / effectiveHeight;
+    const docHeight = document.documentElement.scrollHeight;
+    const viewHeight = window.innerHeight;
+    const targetScroll = ratio * docHeight - viewHeight / 2;
+    window.scrollTo({{ top: targetScroll, behavior: "instant" }});
+  }}
+
+  minimap.addEventListener("mousedown", function(e) {{
+    e.preventDefault();
+    scrollToMinimapPos(e.clientY);
+    function onDrag(ev) {{
+      scrollToMinimapPos(ev.clientY);
+    }}
+    function onUp() {{
+      document.removeEventListener("mousemove", onDrag);
+      document.removeEventListener("mouseup", onUp);
+    }}
+    document.addEventListener("mousemove", onDrag);
+    document.addEventListener("mouseup", onUp);
+  }});
 }})();
 </script>
 </body>
