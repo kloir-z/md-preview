@@ -53,11 +53,12 @@ HTML_TEMPLATE = """\
     --h4-color: var(--heading);
     --accent: #ae9fcc;
     --list-margin: 16px;
+    --minimap-width: 80px;
   }}
   body {{
     max-width: 800px;
     margin: 40px auto;
-    padding: 0 100px 0 20px;
+    padding: 0 calc(var(--minimap-width) + 20px) 0 20px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     line-height: 1.6;
     color: var(--fg);
@@ -287,7 +288,7 @@ HTML_TEMPLATE = """\
     position: fixed;
     top: 0;
     right: 0;
-    width: 80px;
+    width: var(--minimap-width);
     height: 100vh;
     background: var(--code-bg);
     border-left: 1px solid var(--border);
@@ -474,6 +475,8 @@ const savedMaxWidth = localStorage.getItem("md-preview-max-width");
 <script>
 if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
 if (localStorage.getItem("md-preview-toc-open") === "1") document.body.classList.add("toc-open");
+const savedMinimapWidth = localStorage.getItem("md-preview-minimap-width");
+if (savedMinimapWidth) document.documentElement.style.setProperty("--minimap-width", savedMinimapWidth + "px");
 </script>
 <div class="minimap" id="minimap">
   <div class="minimap-content" id="minimapContent"></div>
@@ -517,6 +520,11 @@ if (localStorage.getItem("md-preview-toc-open") === "1") document.body.classList
       <label>Max width</label>
       <input type="range" id="maxWidthSlider" min="600" max="1800" value="800" step="50">
       <span class="slider-value" id="maxWidthValue">800px</span>
+    </div>
+    <div class="settings-slider-row">
+      <label>Minimap width</label>
+      <input type="range" id="minimapWidthSlider" min="60" max="200" value="80" step="5">
+      <span class="slider-value" id="minimapWidthValue">80px</span>
     </div>
   </div>
 </div>
@@ -772,9 +780,12 @@ hljs.highlightAll();
   const listMarginValue = document.getElementById("listMarginValue");
   const maxWidthSlider = document.getElementById("maxWidthSlider");
   const maxWidthValue = document.getElementById("maxWidthValue");
+  const minimapWidthSlider = document.getElementById("minimapWidthSlider");
+  const minimapWidthValue = document.getElementById("minimapWidthValue");
 
   const savedListMargin = localStorage.getItem("md-preview-list-margin");
   const savedMaxWidth = localStorage.getItem("md-preview-max-width");
+  const savedMinimapWidth = localStorage.getItem("md-preview-minimap-width");
 
   if (savedListMargin !== null) {{
     listMarginSlider.value = savedListMargin;
@@ -783,6 +794,10 @@ hljs.highlightAll();
   if (savedMaxWidth !== null) {{
     maxWidthSlider.value = savedMaxWidth;
     maxWidthValue.textContent = savedMaxWidth + "px";
+  }}
+  if (savedMinimapWidth !== null) {{
+    minimapWidthSlider.value = savedMinimapWidth;
+    minimapWidthValue.textContent = savedMinimapWidth + "px";
   }}
 
   listMarginSlider.addEventListener("input", () => {{
@@ -798,6 +813,14 @@ hljs.highlightAll();
     maxWidthValue.textContent = val + "px";
     document.body.style.maxWidth = val + "px";
     localStorage.setItem("md-preview-max-width", val);
+    if (window._rebuildMinimap) window._rebuildMinimap();
+  }});
+
+  minimapWidthSlider.addEventListener("input", () => {{
+    const val = minimapWidthSlider.value;
+    minimapWidthValue.textContent = val + "px";
+    document.documentElement.style.setProperty("--minimap-width", val + "px");
+    localStorage.setItem("md-preview-minimap-width", val);
     if (window._rebuildMinimap) window._rebuildMinimap();
   }});
 }})();
@@ -897,7 +920,6 @@ hljs.highlightAll();
   const minimap = document.getElementById("minimap");
   const minimapContent = document.getElementById("minimapContent");
   const minimapViewport = document.getElementById("minimapViewport");
-  const MINIMAP_WIDTH = 80;
   var scaleX, contentOriginalHeight;
 
   function buildMinimapContent() {{
@@ -905,7 +927,8 @@ hljs.highlightAll();
     const contentSource = document.querySelector(".file-path");
     let el = contentSource;
     while (el) {{
-      if (el !== minimap && el.id !== "settingsBtn" && el.id !== "settingsModal" && el.id !== "settingsOverlay") {{
+      if (el !== minimap && el.id !== "settingsBtn" && el.id !== "settingsModal" && el.id !== "settingsOverlay"
+          && el.id !== "toc" && el.id !== "tocToggle") {{
         minimapContent.appendChild(el.cloneNode(true));
       }}
       el = el.nextElementSibling;
@@ -920,7 +943,8 @@ hljs.highlightAll();
     minimap.style.height = "";
     contentOriginalHeight = minimapContent.scrollHeight;
     // Scale to fit: use whichever is smaller — width-fit or height-fit
-    const scaleByWidth = MINIMAP_WIDTH / contentWidth;
+    const minimapWidth = minimap.clientWidth;
+    const scaleByWidth = minimapWidth / contentWidth;
     const minimapH = minimap.clientHeight;
     const scaleByHeight = minimapH / contentOriginalHeight;
     scaleX = Math.min(scaleByWidth, scaleByHeight);
