@@ -311,6 +311,71 @@ HTML_TEMPLATE = """\
     pointer-events: none;
     min-height: 10px;
   }}
+  /* TOC */
+  .toc {{
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 240px;
+    height: 100vh;
+    background: var(--code-bg);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 48px 8px 20px;
+    z-index: 500;
+    font-size: 13px;
+    box-sizing: border-box;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+  }}
+  .toc.open {{ transform: translateX(0); }}
+  .toc a {{
+    display: block;
+    color: var(--fg);
+    text-decoration: none;
+    padding: 3px 8px;
+    border-left: 2px solid transparent;
+    opacity: 0.65;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }}
+  .toc a:hover {{ opacity: 1; background: rgba(255,255,255,0.04); }}
+  .toc a.active {{
+    opacity: 1;
+    border-left-color: var(--link);
+    color: var(--link);
+    background: rgba(255,255,255,0.03);
+  }}
+  .toc .toc-h1 {{ font-weight: 600; }}
+  .toc .toc-h2 {{ padding-left: 18px; }}
+  .toc .toc-h3 {{ padding-left: 32px; font-size: 12px; }}
+  .toc .toc-h4 {{ padding-left: 46px; font-size: 12px; }}
+  .toc .toc-h5 {{ padding-left: 60px; font-size: 11px; }}
+  .toc .toc-h6 {{ padding-left: 74px; font-size: 11px; }}
+  .toc-toggle {{
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+    color: var(--fg);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0.5;
+    transition: opacity 0.2s, left 0.18s ease;
+  }}
+  .toc-toggle:hover {{ opacity: 1; }}
+  body.toc-open .toc-toggle {{ left: 210px; }}
+  body.toc-open {{ margin-left: 260px; margin-right: 20px; }}
 </style>
 <script>
 const THEMES = {{
@@ -408,11 +473,14 @@ const savedMaxWidth = localStorage.getItem("md-preview-max-width");
 <body>
 <script>
 if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
+if (localStorage.getItem("md-preview-toc-open") === "1") document.body.classList.add("toc-open");
 </script>
 <div class="minimap" id="minimap">
   <div class="minimap-content" id="minimapContent"></div>
   <div class="minimap-viewport" id="minimapViewport"></div>
 </div>
+<button class="toc-toggle" id="tocToggle" title="Toggle TOC (Ctrl+\\)">&#9776;</button>
+<nav class="toc" id="toc"></nav>
 <button class="settings-btn" id="settingsBtn" title="Settings">&#9881;</button>
 <div class="settings-overlay" id="settingsOverlay"></div>
 <div class="settings-modal" id="settingsModal">
@@ -747,6 +815,81 @@ hljs.highlightAll();
       }}
     }} catch(e) {{}}
   }}, 1000);
+}})();
+
+// --- TOC ---
+(function() {{
+  const toc = document.getElementById("toc");
+  const tocBtn = document.getElementById("tocToggle");
+  const filePath = document.querySelector(".file-path");
+  const headings = [];
+  let el = filePath ? filePath.nextElementSibling : null;
+  while (el) {{
+    if (/^H[1-6]$/.test(el.tagName)) headings.push(el);
+    // also include nested headings (rare in our markdown but just in case)
+    el.querySelectorAll && el.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(h => headings.push(h));
+    el = el.nextElementSibling;
+  }}
+
+  const links = [];
+  headings.forEach((h, i) => {{
+    if (!h.id) h.id = "toc-h-" + i;
+    const a = document.createElement("a");
+    a.href = "#" + h.id;
+    a.textContent = h.textContent.trim();
+    a.className = "toc-" + h.tagName.toLowerCase();
+    a.addEventListener("click", (e) => {{
+      e.preventDefault();
+      const top = h.getBoundingClientRect().top + window.scrollY - 20;
+      window.scrollTo({{ top: top, behavior: "smooth" }});
+    }});
+    toc.appendChild(a);
+    links.push({{ heading: h, link: a }});
+  }});
+
+  function setOpen(open) {{
+    toc.classList.toggle("open", open);
+    document.body.classList.toggle("toc-open", open);
+    localStorage.setItem("md-preview-toc-open", open ? "1" : "0");
+    if (window._rebuildMinimap) window._rebuildMinimap();
+  }}
+  const savedOpen = localStorage.getItem("md-preview-toc-open") === "1";
+  setOpen(savedOpen && links.length > 0);
+  tocBtn.addEventListener("click", () => setOpen(!toc.classList.contains("open")));
+
+  document.addEventListener("keydown", (e) => {{
+    if (e.ctrlKey && e.key === "\\\\") {{
+      e.preventDefault();
+      setOpen(!toc.classList.contains("open"));
+    }}
+  }});
+
+  if (links.length > 0) {{
+    let active = null;
+    function updateActive() {{
+      const threshold = 80;
+      let current = links[0];
+      for (const l of links) {{
+        const top = l.heading.getBoundingClientRect().top;
+        if (top <= threshold) current = l;
+        else break;
+      }}
+      if (current !== active) {{
+        if (active) active.link.classList.remove("active");
+        active = current;
+        active.link.classList.add("active");
+        const linkRect = active.link.getBoundingClientRect();
+        const tocRect = toc.getBoundingClientRect();
+        if (linkRect.top < tocRect.top + 40 || linkRect.bottom > tocRect.bottom - 20) {{
+          active.link.scrollIntoView({{ block: "center", behavior: "auto" }});
+        }}
+      }}
+    }}
+    window.addEventListener("scroll", updateActive, {{ passive: true }});
+    updateActive();
+  }} else {{
+    tocBtn.style.display = "none";
+  }}
 }})();
 
 // --- Minimap ---
