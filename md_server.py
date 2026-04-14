@@ -57,7 +57,7 @@ HTML_TEMPLATE = """\
   body {{
     max-width: 800px;
     margin: 40px auto;
-    padding: 0 20px;
+    padding: 0 100px 0 20px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     line-height: 1.6;
     color: var(--fg);
@@ -447,7 +447,7 @@ if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
     </div>
     <div class="settings-slider-row">
       <label>Max width</label>
-      <input type="range" id="maxWidthSlider" min="600" max="1200" value="800" step="50">
+      <input type="range" id="maxWidthSlider" min="600" max="1800" value="800" step="50">
       <span class="slider-value" id="maxWidthValue">800px</span>
     </div>
   </div>
@@ -772,8 +772,9 @@ hljs.highlightAll();
   function applyScale() {{
     const contentWidth = parseInt(document.body.style.maxWidth) || 800;
     minimapContent.style.width = contentWidth + "px";
-    // Reset transform to measure true height
+    // Reset transform and minimap height so we measure against the full viewport
     minimapContent.style.transform = "none";
+    minimap.style.height = "";
     contentOriginalHeight = minimapContent.scrollHeight;
     // Scale to fit: use whichever is smaller — width-fit or height-fit
     const scaleByWidth = MINIMAP_WIDTH / contentWidth;
@@ -781,6 +782,12 @@ hljs.highlightAll();
     const scaleByHeight = minimapH / contentOriginalHeight;
     scaleX = Math.min(scaleByWidth, scaleByHeight);
     minimapContent.style.transform = "scale(" + scaleX + ")";
+    // Shrink minimap to scaled content height when content fits,
+    // so the viewport indicator can reach the bottom at max scroll.
+    const scaledContentH = contentOriginalHeight * scaleX;
+    if (scaledContentH < minimapH) {{
+      minimap.style.height = scaledContentH + "px";
+    }}
   }}
 
   buildMinimapContent();
