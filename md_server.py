@@ -377,6 +377,85 @@ HTML_TEMPLATE = """\
   .toc-toggle:hover {{ opacity: 1; }}
   body.toc-open .toc-toggle {{ left: 210px; }}
   body.toc-open {{ margin-left: 260px; margin-right: 20px; }}
+  /* Edit mode */
+  .edit-btn {{
+    position: fixed;
+    bottom: 20px;
+    right: calc(var(--minimap-width) + 66px);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+    color: var(--fg);
+    font-size: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }}
+  .edit-btn:hover {{ opacity: 1; }}
+  .settings-btn {{ right: calc(var(--minimap-width) + 20px); }}
+  .edit-panel {{
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background: var(--bg);
+    padding: 40px 40px 80px 40px;
+    box-sizing: border-box;
+  }}
+  body.editing .edit-panel {{ display: block; }}
+  body.editing .edit-controls {{ display: flex; }}
+  .edit-textarea {{
+    width: 100%;
+    height: 100%;
+    background: var(--code-bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    font-family: Consolas, Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: none;
+    box-sizing: border-box;
+    outline: none;
+    tab-size: 4;
+  }}
+  .edit-textarea:focus {{ border-color: var(--link); }}
+  .edit-controls {{
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    gap: 8px;
+    z-index: 3001;
+    align-items: center;
+  }}
+  .edit-controls .edit-status {{
+    font-size: 12px;
+    color: var(--file-path);
+    margin-right: 8px;
+  }}
+  .edit-controls button {{
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--code-bg);
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 13px;
+  }}
+  .edit-controls button.save {{
+    background: var(--link);
+    color: var(--bg);
+    border-color: var(--link);
+  }}
+  .edit-controls button:hover {{ opacity: 0.9; }}
 </style>
 <script>
 const THEMES = {{
@@ -484,7 +563,16 @@ if (savedMinimapWidth) document.documentElement.style.setProperty("--minimap-wid
 </div>
 <button class="toc-toggle" id="tocToggle" title="Toggle TOC (Ctrl+\\)">&#9776;</button>
 <nav class="toc" id="toc"></nav>
+<button class="edit-btn" id="editBtn" title="Edit (Ctrl+E)">&#9998;</button>
 <button class="settings-btn" id="settingsBtn" title="Settings">&#9881;</button>
+<div class="edit-panel" id="editPanel">
+  <textarea class="edit-textarea" id="editTextarea" spellcheck="false"></textarea>
+</div>
+<div class="edit-controls" id="editControls">
+  <span class="edit-status" id="editStatus"></span>
+  <button class="cancel" id="editCancelBtn">Cancel (Esc)</button>
+  <button class="save" id="editSaveBtn">Save (Ctrl+S)</button>
+</div>
 <div class="settings-overlay" id="settingsOverlay"></div>
 <div class="settings-modal" id="settingsModal">
   <div class="settings-modal-header">
@@ -829,6 +917,7 @@ hljs.highlightAll();
   let hash = "{content_hash}";
   const path = "{filepath_js}";
   setInterval(async () => {{
+    if (document.body.classList.contains("editing")) return;
     try {{
       const res = await fetch("/hash?path=" + encodeURIComponent(path));
       const data = await res.json();
@@ -838,6 +927,111 @@ hljs.highlightAll();
       }}
     }} catch(e) {{}}
   }}, 1000);
+}})();
+
+// --- Edit mode ---
+(function() {{
+  const btn = document.getElementById("editBtn");
+  const panel = document.getElementById("editPanel");
+  const textarea = document.getElementById("editTextarea");
+  const controls = document.getElementById("editControls");
+  const cancelBtn = document.getElementById("editCancelBtn");
+  const saveBtn = document.getElementById("editSaveBtn");
+  const status = document.getElementById("editStatus");
+  const filePath = "{filepath_js}";
+  let originalText = "";
+
+  function setStatus(msg) {{
+    status.textContent = msg || "";
+  }}
+
+  function isDirty() {{
+    return textarea.value !== originalText;
+  }}
+
+  async function enter() {{
+    setStatus("Loading...");
+    try {{
+      const res = await fetch("/content?path=" + encodeURIComponent(filePath));
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      originalText = text;
+      textarea.value = text;
+      document.body.classList.add("editing");
+      setStatus("");
+      textarea.focus();
+    }} catch(e) {{
+      setStatus("Load failed: " + e.message);
+      alert("Load failed: " + e.message);
+    }}
+  }}
+
+  function exit(force) {{
+    if (!force && isDirty() && !confirm("Discard unsaved changes?")) return;
+    document.body.classList.remove("editing");
+    setStatus("");
+  }}
+
+  async function save() {{
+    setStatus("Saving...");
+    try {{
+      const res = await fetch("/save?path=" + encodeURIComponent(filePath), {{
+        method: "POST",
+        headers: {{ "Content-Type": "text/plain; charset=utf-8" }},
+        body: textarea.value,
+      }});
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      originalText = textarea.value;
+      setStatus("Saved");
+      location.reload();
+    }} catch(e) {{
+      setStatus("Save failed: " + e.message);
+      alert("Save failed: " + e.message);
+    }}
+  }}
+
+  btn.addEventListener("click", enter);
+  cancelBtn.addEventListener("click", () => exit(false));
+  saveBtn.addEventListener("click", save);
+
+  document.addEventListener("keydown", (e) => {{
+    const editing = document.body.classList.contains("editing");
+    if (e.ctrlKey && e.key.toLowerCase() === "s" && editing) {{
+      e.preventDefault();
+      save();
+    }} else if (e.key === "Escape" && editing) {{
+      e.preventDefault();
+      exit(false);
+    }} else if (e.ctrlKey && e.key.toLowerCase() === "e" && !editing) {{
+      e.preventDefault();
+      enter();
+    }}
+  }});
+
+  textarea.addEventListener("keydown", (e) => {{
+    if (e.key === "Tab") {{
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      if (start === end) {{
+        textarea.setRangeText("    ", start, end, "end");
+      }} else {{
+        // Indent selected lines
+        const before = textarea.value.substring(0, start);
+        const lineStart = before.lastIndexOf("\\n") + 1;
+        const selected = textarea.value.substring(lineStart, end);
+        const indented = selected.replace(/^/gm, "    ");
+        textarea.setRangeText(indented, lineStart, end, "end");
+      }}
+    }}
+  }});
+
+  window.addEventListener("beforeunload", (e) => {{
+    if (document.body.classList.contains("editing") && isDirty()) {{
+      e.preventDefault();
+      e.returnValue = "";
+    }}
+  }});
 }})();
 
 // --- TOC ---
@@ -1093,6 +1287,24 @@ class MarkdownHandler(BaseHTTPRequestHandler):
             self.write(json.dumps({"hash": content_hash}).encode())
             return
 
+        if parsed.path == "/content":
+            params = parse_qs(parsed.query)
+            filepath = params.get("path", [None])[0]
+            if not filepath:
+                self.send_error(400, "Missing path parameter")
+                return
+            filepath = unquote(filepath)
+            path = Path(filepath)
+            if not path.exists():
+                self.send_error(404, "File not found")
+                return
+            text = path.read_text(encoding="utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.write(text.encode("utf-8"))
+            return
+
         if parsed.path.startswith("/static/"):
             filename = parsed.path[len("/static/"):]
             filepath = STATIC_DIR / filename
@@ -1117,6 +1329,32 @@ class MarkdownHandler(BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header("Location", f"/view?path={filepath}")
             self.end_headers()
+            return
+
+        self.send_error(404)
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/save":
+            params = parse_qs(parsed.query)
+            filepath = params.get("path", [None])[0]
+            if not filepath:
+                self.send_error(400, "Missing path parameter")
+                return
+            filepath = unquote(filepath)
+            path = Path(filepath)
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length).decode("utf-8")
+                path.write_text(body, encoding="utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                new_hash = hashlib.md5(body.encode()).hexdigest()
+                self.write(json.dumps({"ok": True, "hash": new_hash}).encode())
+            except Exception as e:
+                self.send_error(500, f"Save failed: {e}")
             return
 
         self.send_error(404)
