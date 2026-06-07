@@ -12,20 +12,37 @@ function __processContent() {
   document.querySelectorAll("#mdContent pre code").forEach((el) => {
     try { delete el.dataset.highlighted; hljs.highlightElement(el); } catch(e) {}
   });
-  if (window.mermaid) {
+  const afterMermaid = function() {
+    if (window.__ensureBottomRoom) window.__ensureBottomRoom();  // 図の描画後に余白を再算定
+    if (window._rebuildMinimap) window._rebuildMinimap();        // 描画完了後に構築（clone競合回避）
+  };
+  const blocks = window.mermaid
+    ? document.querySelectorAll("#mdContent .mermaid:not([data-processed])")
+    : [];
+  if (window.mermaid && blocks.length) {
     if (!window.__mermaidInit) {
       mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
       window.__mermaidInit = true;
     }
-    // 描画は非同期。完了後にミニマップを構築する（描画途中の cloneNode 競合で
-    // 先頭の図(sequence等)が壊れるのを防ぐ）。
-    mermaid.run({ querySelector: "#mdContent .mermaid" }).finally(function() {
-      if (window.__ensureBottomRoom) window.__ensureBottomRoom();  // 図の描画後に余白を再算定
-      if (window._rebuildMinimap) window._rebuildMinimap();
+    // mermaid.run({querySelector}) はラベルをインプレース測定するため、本文の最大横幅
+    // (--max-width) が図の自然幅より狭いと横長フローチャートがレイアウト崩壊して空SVGに
+    // なる。render() は自前の非制約コンテナで測定するので影響を受けない。図ごとに render()
+    // して結果SVGを差し込む。描画は非同期、全完了後に afterMermaid() を呼ぶ。
+    let pending = blocks.length;
+    const settle = function() { if (--pending <= 0) afterMermaid(); };
+    blocks.forEach(function(el, i) {
+      const id = "mmd-" + Date.now() + "-" + i;
+      mermaid.render(id, el.textContent).then(function(out) {
+        el.innerHTML = out.svg;
+        if (out.bindFunctions) out.bindFunctions(el);
+        el.setAttribute("data-processed", "true");
+      }).catch(function(e) {
+        el.setAttribute("data-processed", "true");
+        console.error("mermaid render failed:", e);
+      }).finally(settle);
     });
   } else {
-    if (window.__ensureBottomRoom) window.__ensureBottomRoom();
-    if (window._rebuildMinimap) window._rebuildMinimap();
+    afterMermaid();
   }
 }
 window.__processContent = __processContent;
