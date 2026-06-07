@@ -457,6 +457,16 @@ HTML_TEMPLATE = """\
   .tree-folder > .tree-row .tree-icon {{ color: var(--heading); opacity: 0.9; }}
   .tree-file .tree-icon {{ color: var(--fg); opacity: 0.55; }}
   .tree-file.active .tree-icon {{ color: var(--link); opacity: 1; }}
+  /* 開いているファイルを含むフォルダは、折り畳み時に行をハイライト（active fileと同調）。
+     展開中はファイル自体が見えるので無印。has-activeは保持され、折り畳みトグルだけで反応。 */
+  .tree-folder.collapsed.has-active > .tree-row {{
+    opacity: 1;
+    color: var(--link);
+    border-left-color: var(--link);
+    background: rgba(255,255,255,0.04);
+  }}
+  .tree-folder.collapsed.has-active > .tree-row .tree-icon,
+  .tree-folder.collapsed.has-active > .tree-row .tree-caret {{ color: var(--link); opacity: 1; }}
   .toc-toggle {{
     position: fixed;
     top: 10px;
@@ -664,10 +674,16 @@ if (savedTheme === "custom") {{
 }}
 const savedCodeTheme = localStorage.getItem("md-preview-code-theme") || DEFAULT_CODE_THEME;
 applyCodeTheme(savedCodeTheme);
-["--h1-color","--h2-color","--h3-color","--h4-color"].forEach(k => {{
-  const v = localStorage.getItem("md-preview-" + k);
-  if (v) document.documentElement.style.setProperty(k, v);
-}});
+// ユーザーが上書きした色（見出しH1-H4 + 本文--fg）。テーマ切替で--fgは
+// applyThemeに上書きされるため、テーマ適用のたびに再適用してHxと同様に維持する。
+const USER_COLOR_VARS = ["--h1-color","--h2-color","--h3-color","--h4-color","--fg"];
+function applyUserColors() {{
+  USER_COLOR_VARS.forEach(k => {{
+    const v = localStorage.getItem("md-preview-" + k);
+    if (v) document.documentElement.style.setProperty(k, v);
+  }});
+}}
+applyUserColors();
 const savedListMargin = localStorage.getItem("md-preview-list-margin");
 if (savedListMargin) document.documentElement.style.setProperty("--list-margin", savedListMargin + "px");
 const savedMaxWidth = localStorage.getItem("md-preview-max-width");
@@ -729,7 +745,9 @@ if (savedTocWidth) document.documentElement.style.setProperty("--toc-width", sav
     <button class="settings-btn-apply" id="colorImportBtn">Apply</button>
   </div>
   <div class="settings-section">
-    <div class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center;">Heading Colors <button class="settings-btn-apply" id="shuffleHeadingBtn" style="margin:0;padding:2px 10px;font-size:11px;">Shuffle</button></div>
+    <div class="settings-section-title">Text Color</div>
+    <div class="settings-color-row"><label>Body</label><select class="heading-color-select" id="fgColor"></select></div>
+    <div class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">Heading Colors <button class="settings-btn-apply" id="shuffleHeadingBtn" style="margin:0;padding:2px 10px;font-size:11px;">Shuffle</button></div>
     <div class="settings-color-row"><label>H1</label><select class="heading-color-select" id="h1Color"></select></div>
     <div class="settings-color-row"><label>H2</label><select class="heading-color-select" id="h2Color"></select></div>
     <div class="settings-color-row"><label>H3</label><select class="heading-color-select" id="h3Color"></select></div>
@@ -836,6 +854,8 @@ __processContent();
     currentTheme = key;
     const customTheme = localStorage.getItem("md-preview-custom-theme");
     applyTheme(key === "custom" && customTheme ? JSON.parse(customTheme) : THEMES[key]);
+    applyUserColors();   // テーマで上書きされた--fg等のユーザー色を再適用（維持）
+    buildFgSelect();     // 本文色セレクトの既定表示を新テーマに合わせて更新
     localStorage.setItem("md-preview-theme", key);
     if (window._rebuildMinimap) window._rebuildMinimap();
   }});
@@ -962,6 +982,8 @@ __processContent();
         localStorage.setItem("md-preview-" + v, c);
       }});
       buildHeadingSelects();
+      applyUserColors();   // 本文色(--fg)のユーザー上書きを維持
+      buildFgSelect();
       if (window._rebuildMinimap) window._rebuildMinimap();
     }} catch (e) {{
       colorImportError.textContent = e.message;
@@ -1033,6 +1055,39 @@ __processContent();
   }});
 
   buildHeadingSelects();
+
+  // --- Body text color (--fg) --- Hxと同様にパレットから選択。テーマ切替後も維持。
+  const fgSelect = document.getElementById("fgColor");
+  function buildFgSelect() {{
+    const palette = getPalette();
+    const saved = localStorage.getItem("md-preview--fg");
+    const cur = saved || getComputedStyle(document.documentElement).getPropertyValue("--fg").trim();
+    fgSelect.innerHTML = "";
+    let matched = false;
+    palette.forEach(p => {{
+      const opt = document.createElement("option");
+      opt.value = p.hex;
+      opt.textContent = p.name + " (" + p.hex + ")";
+      opt.style.color = p.hex;
+      if (cur && cur.toLowerCase() === p.hex.toLowerCase()) {{ opt.selected = true; matched = true; }}
+      fgSelect.appendChild(opt);
+    }});
+    // パレットに無い現在値（カスタム）も選べるよう末尾に追加
+    if (cur && !matched) {{
+      const opt = document.createElement("option");
+      opt.value = cur;
+      opt.textContent = "Current (" + cur + ")";
+      opt.style.color = cur;
+      opt.selected = true;
+      fgSelect.appendChild(opt);
+    }}
+  }}
+  fgSelect.addEventListener("change", (e) => {{
+    const val = e.target.value;
+    document.documentElement.style.setProperty("--fg", val);
+    localStorage.setItem("md-preview--fg", val);
+  }});
+  buildFgSelect();
 
   document.getElementById("shuffleHeadingBtn").addEventListener("click", () => {{
     const palette = getPalette();
@@ -1367,6 +1422,18 @@ __processContent();
     paneFiles.querySelectorAll(".tree-file").forEach(a => {{
       if (a.dataset.abs === abs) a.classList.add("active");
     }});
+    updateFolderActive();
+  }}
+  // 開いているファイルの祖先フォルダに has-active を付与（折り畳み時にCSSでハイライト）
+  function updateFolderActive() {{
+    paneFiles.querySelectorAll(".tree-folder.has-active").forEach(li => li.classList.remove("has-active"));
+    const act = paneFiles.querySelector(".tree-file.active");
+    if (!act) return;
+    let el = act.parentElement;
+    while (el && el !== paneFiles) {{
+      if (el.classList && el.classList.contains("tree-folder")) el.classList.add("has-active");
+      el = el.parentElement;
+    }}
   }}
   function loadFile(abs, opts) {{
     opts = opts || {{}};
@@ -1514,6 +1581,7 @@ __processContent();
         rootUl.className = "toc-tree";
         renderInto(rootUl, tree, "", 0, openDirs);
         paneFiles.appendChild(rootUl);
+        updateFolderActive();
         const act = paneFiles.querySelector(".tree-file.active");
         if (act) act.scrollIntoView({{ block: "center" }});
       }}
