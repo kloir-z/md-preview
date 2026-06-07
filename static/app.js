@@ -20,9 +20,11 @@ function __processContent() {
     // 描画は非同期。完了後にミニマップを構築する（描画途中の cloneNode 競合で
     // 先頭の図(sequence等)が壊れるのを防ぐ）。
     mermaid.run({ querySelector: "#mdContent .mermaid" }).finally(function() {
+      if (window.__ensureBottomRoom) window.__ensureBottomRoom();  // 図の描画後に余白を再算定
       if (window._rebuildMinimap) window._rebuildMinimap();
     });
   } else {
+    if (window.__ensureBottomRoom) window.__ensureBottomRoom();
     if (window._rebuildMinimap) window._rebuildMinimap();
   }
 }
@@ -639,7 +641,26 @@ __processContent();
       }
     }
   }
+  // 末尾付近の見出しは、ページを下まで送ってもビューポート上端の閾値まで上がってこられず
+  // （スクロール余地が尽きるため）、updateActive で拾われずハイライトされない。最後の見出しが
+  // 上端の閾値に到達できるだけの余白を本文下に足して、全見出しをスクロールで辿れるようにする。
+  // 足すのは「最後の見出しを上端に持ってくるのに不足している分」だけ＝余白は最小限。
+  function ensureBottomScrollRoom() {
+    mdContent.style.paddingBottom = "";  // まず素の高さで測る
+    if (!links.length) return;
+    const viewH = window.innerHeight;
+    const maxScroll = document.documentElement.scrollHeight - viewH;
+    if (maxScroll <= 0) return;          // 画面に収まる文書はそのまま（スクロール不要）
+    const threshold = 80;                // updateActive と同じ上端閾値
+    const last = links[links.length - 1].heading;
+    const lastTop = last.getBoundingClientRect().top + window.scrollY;  // 文書上端からの絶対位置
+    const extra = (lastTop - threshold) - maxScroll;
+    if (extra > 0) mdContent.style.paddingBottom = Math.ceil(extra) + "px";
+  }
+  window.__ensureBottomRoom = ensureBottomScrollRoom;
   window.addEventListener("scroll", updateActive, { passive: true });
+  // ビューポート高が変わると必要な余白も変わる
+  window.addEventListener("resize", () => { ensureBottomScrollRoom(); updateActive(); });
 
   // ---- 表示モード（files / outline / both） ----
   const savedMode = localStorage.getItem("md-preview-toc-mode");
@@ -771,8 +792,10 @@ __processContent();
         if (data.title) document.title = data.title;
         window.__md.path = abs;
         window.__md.hash = data.hash;
-        if (window.__processContent) window.__processContent();
+        // rebuildOutlineを先に: __processContent内のensureBottomScrollRoomが最新の見出しで
+        // 余白を計算できるようにする（__processContentは見出しを変更しないので順序入替は安全）。
         rebuildOutline();
+        if (window.__processContent) window.__processContent();
         updateActive();
         setActiveFile(abs);
         if (opts.push !== false) {
@@ -893,7 +916,10 @@ __processContent();
   }
 
   // 初期化: アウトライン構築 → 一度確定 → ファイル一覧（git）を一度だけ取得して確定
+  // 初回の top-level __processContent はリンク構築前に走るため、ここで余白を算定し直す。
   rebuildOutline();
+  ensureBottomScrollRoom();
+  if (window._rebuildMinimap) window._rebuildMinimap();  // 余白反映後にミニマップを再構築
   updateActive();
   finalize();
   history.replaceState({ path: window.__md.path }, "", location.href);
