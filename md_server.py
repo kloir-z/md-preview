@@ -13,10 +13,11 @@ import asyncio
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import threading
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, unquote
 
@@ -35,6 +36,7 @@ HTML_TEMPLATE = """\
 <title>{title}</title>
 <link rel="stylesheet" href="/static/monokai.min.css">
 <script src="/static/highlight.min.js"></script>
+<script src="/static/mermaid.min.js"></script>
 <style>
   :root {{
     --bg: #272822;
@@ -54,6 +56,7 @@ HTML_TEMPLATE = """\
     --accent: #ae9fcc;
     --list-margin: 16px;
     --minimap-width: 80px;
+    --toc-width: 240px;
   }}
   body {{
     max-width: 800px;
@@ -317,7 +320,7 @@ HTML_TEMPLATE = """\
     position: fixed;
     top: 0;
     left: 0;
-    width: 240px;
+    width: var(--toc-width);
     height: 100vh;
     background: var(--code-bg);
     border-right: 1px solid var(--border);
@@ -330,6 +333,31 @@ HTML_TEMPLATE = """\
     transition: transform 0.18s ease;
   }}
   .toc.open {{ transform: translateX(0); }}
+  .toc li {{ margin: 0; }}  /* ツリー行間の隙間（global li margin）を打ち消す */
+  /* リサイズハンドル（左サイドバー右端 / ミニマップ左端） */
+  .toc-resize {{
+    position: fixed;
+    top: 0;
+    left: var(--toc-width);
+    width: 6px;
+    height: 100vh;
+    margin-left: -3px;
+    cursor: col-resize;
+    z-index: 600;
+    display: none;
+  }}
+  body.toc-open .toc-resize {{ display: block; }}
+  .toc-resize:hover, .minimap-resize:hover {{ background: var(--link); opacity: 0.5; }}
+  .minimap-resize {{
+    position: fixed;
+    top: 0;
+    right: var(--minimap-width);
+    width: 6px;
+    height: 100vh;
+    margin-right: -3px;
+    cursor: col-resize;
+    z-index: 600;
+  }}
   .toc a {{
     display: block;
     color: var(--fg);
@@ -355,6 +383,67 @@ HTML_TEMPLATE = """\
   .toc .toc-h4 {{ padding-left: 46px; font-size: 12px; }}
   .toc .toc-h5 {{ padding-left: 60px; font-size: 11px; }}
   .toc .toc-h6 {{ padding-left: 74px; font-size: 11px; }}
+  .toc-tabs {{
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }}
+  .toc-tab {{
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--fg);
+    opacity: 0.55;
+    padding: 6px 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }}
+  .toc-tab:hover {{ opacity: 0.85; }}
+  .toc-tab.active {{
+    opacity: 1;
+    color: var(--link);
+    border-bottom-color: var(--link);
+  }}
+  /* file tree (Files tab) -- 行は全幅・隙間なし、インデントはpadding-leftで均等付与 */
+  .toc-tree, .toc-tree ul {{ list-style: none; margin: 0; padding: 0; }}
+  .tree-row {{
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    /* サイドバーの左右パディング(8px)を打ち消して行を全幅化（ホバー領域を端まで） */
+    margin: 0 -8px;
+    padding: 4px 8px;
+    color: var(--fg);
+    text-decoration: none;
+    opacity: 0.7;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    border-left: 2px solid transparent;
+    line-height: 1.4;
+    box-sizing: border-box;
+  }}
+  .tree-row:hover {{ opacity: 1; background: rgba(255,255,255,0.06); }}
+  .tree-file.active {{
+    opacity: 1;
+    color: var(--link);
+    border-left-color: var(--link);
+    background: rgba(255,255,255,0.04);
+  }}
+  .tree-caret {{
+    flex: 0 0 12px;
+    width: 12px;
+    font-size: 10px;
+    text-align: center;
+    opacity: 0.7;
+    transition: transform 0.1s;
+  }}
+  .tree-folder.collapsed > ul {{ display: none; }}
+  .tree-folder.collapsed > .tree-row .tree-caret {{ transform: rotate(-90deg); }}
+  .tree-name {{ overflow: hidden; text-overflow: ellipsis; }}
   .toc-toggle {{
     position: fixed;
     top: 10px;
@@ -375,8 +464,8 @@ HTML_TEMPLATE = """\
     transition: opacity 0.2s, left 0.18s ease;
   }}
   .toc-toggle:hover {{ opacity: 1; }}
-  body.toc-open .toc-toggle {{ left: 210px; }}
-  body.toc-open {{ margin-left: 260px; margin-right: 20px; }}
+  body.toc-open .toc-toggle {{ left: calc(var(--toc-width) - 30px); }}
+  body.toc-open {{ margin-left: calc(var(--toc-width) + 20px); margin-right: 20px; }}
   /* Edit mode */
   .edit-btn {{
     position: fixed;
@@ -556,13 +645,24 @@ if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
 if (localStorage.getItem("md-preview-toc-open") === "1") document.body.classList.add("toc-open");
 const savedMinimapWidth = localStorage.getItem("md-preview-minimap-width");
 if (savedMinimapWidth) document.documentElement.style.setProperty("--minimap-width", savedMinimapWidth + "px");
+const savedTocWidth = localStorage.getItem("md-preview-toc-width");
+if (savedTocWidth) document.documentElement.style.setProperty("--toc-width", savedTocWidth + "px");
 </script>
 <div class="minimap" id="minimap">
   <div class="minimap-content" id="minimapContent"></div>
   <div class="minimap-viewport" id="minimapViewport"></div>
 </div>
-<button class="toc-toggle" id="tocToggle" title="Toggle TOC (Ctrl+\\)">&#9776;</button>
-<nav class="toc" id="toc"></nav>
+<div class="minimap-resize" id="minimapResize" title="Drag to resize minimap"></div>
+<button class="toc-toggle" id="tocToggle" title="Toggle sidebar (Ctrl+\\)">&#9776;</button>
+<nav class="toc" id="toc">
+  <div class="toc-tabs" id="tocTabs">
+    <button class="toc-tab active" id="tabOutline">Outline</button>
+    <button class="toc-tab" id="tabFiles">Files</button>
+  </div>
+  <div class="toc-pane" id="paneOutline"></div>
+  <div class="toc-pane" id="paneFiles" style="display:none"></div>
+</nav>
+<div class="toc-resize" id="tocResize" title="Drag to resize sidebar"></div>
 <button class="edit-btn" id="editBtn" title="Edit (Ctrl+E)">&#9998;</button>
 <button class="settings-btn" id="settingsBtn" title="Settings">&#9881;</button>
 <div class="edit-panel" id="editPanel">
@@ -616,10 +716,41 @@ if (savedMinimapWidth) document.documentElement.style.setProperty("--minimap-wid
     </div>
   </div>
 </div>
-<div class="file-path">{filepath}</div>
+<div class="file-path" id="filePathEl">{filepath}</div>
+<main id="mdContent">
 {content}
+</main>
 <script>
-hljs.highlightAll();
+// 現在表示中ファイルの状態（シームレス切替で書き換わる）。各モジュールはここを参照する。
+window.__md = {{ path: "{filepath_js}", hash: "{content_hash}" }};
+
+// --- コンテンツ後処理: mermaid変換 + hljs + ミニマップ再構築（切替時に再実行） ---
+function __processContent() {{
+  document.querySelectorAll("#mdContent pre > code.language-mermaid").forEach((code) => {{
+    const div = document.createElement("div");
+    div.className = "mermaid";
+    div.textContent = code.textContent;
+    code.parentElement.replaceWith(div);
+  }});
+  document.querySelectorAll("#mdContent pre code").forEach((el) => {{
+    try {{ delete el.dataset.highlighted; hljs.highlightElement(el); }} catch(e) {{}}
+  }});
+  if (window.mermaid) {{
+    if (!window.__mermaidInit) {{
+      mermaid.initialize({{ startOnLoad: false, theme: "dark", securityLevel: "loose" }});
+      window.__mermaidInit = true;
+    }}
+    // 描画は非同期。完了後にミニマップを構築する（描画途中の cloneNode 競合で
+    // 先頭の図(sequence等)が壊れるのを防ぐ）。
+    mermaid.run({{ querySelector: "#mdContent .mermaid" }}).finally(function() {{
+      if (window._rebuildMinimap) window._rebuildMinimap();
+    }});
+  }} else {{
+    if (window._rebuildMinimap) window._rebuildMinimap();
+  }}
+}}
+window.__processContent = __processContent;
+__processContent();
 
 // --- Settings modal ---
 (function() {{
@@ -913,17 +1044,59 @@ hljs.highlightAll();
   }});
 }})();
 
+// --- Resize handles: 左サイドバー幅 / ミニマップ幅 ---
 (function() {{
-  let hash = "{content_hash}";
-  const path = "{filepath_js}";
+  function clamp(v, lo, hi) {{ return Math.max(lo, Math.min(hi, v)); }}
+  function startDrag(handle, onMove, onEnd) {{
+    if (!handle) return;
+    handle.addEventListener("mousedown", (e) => {{
+      e.preventDefault();
+      e.stopPropagation();
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+      function mv(ev) {{ onMove(ev.clientX); }}
+      function up() {{
+        document.removeEventListener("mousemove", mv);
+        document.removeEventListener("mouseup", up);
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+        if (onEnd) onEnd();
+      }}
+      document.addEventListener("mousemove", mv);
+      document.addEventListener("mouseup", up);
+    }});
+  }}
+
+  // 左サイドバー: 左端=0 なので clientX がそのまま幅
+  startDrag(document.getElementById("tocResize"), (x) => {{
+    const w = clamp(Math.round(x), 150, 600);
+    document.documentElement.style.setProperty("--toc-width", w + "px");
+    localStorage.setItem("md-preview-toc-width", w);
+  }});
+
+  // ミニマップ: 右端固定なので 幅 = 画面幅 - clientX。設定スライダーとも同期。
+  const mmSlider = document.getElementById("minimapWidthSlider");
+  const mmValue = document.getElementById("minimapWidthValue");
+  startDrag(document.getElementById("minimapResize"), (x) => {{
+    const w = clamp(Math.round(window.innerWidth - x), 60, 400);
+    document.documentElement.style.setProperty("--minimap-width", w + "px");
+    localStorage.setItem("md-preview-minimap-width", w);
+    if (mmSlider) mmSlider.value = w;
+    if (mmValue) mmValue.textContent = w + "px";
+    if (window._updateMinimapScale) window._updateMinimapScale();  // ドラッグ中は軽量な再スケールのみ
+  }}, () => {{ if (window._rebuildMinimap) window._rebuildMinimap(); }});  // 終了時に再構築
+}})();
+
+(function() {{
   setInterval(async () => {{
     if (document.body.classList.contains("editing")) return;
     try {{
-      const res = await fetch("/hash?path=" + encodeURIComponent(path));
+      const res = await fetch("/hash?path=" + encodeURIComponent(window.__md.path));
       const data = await res.json();
-      if (data.hash && data.hash !== hash) {{
-        hash = data.hash;
-        location.reload();
+      if (data.hash && data.hash !== window.__md.hash) {{
+        window.__md.hash = data.hash;
+        if (window.__reloadCurrent) window.__reloadCurrent();
+        else location.reload();
       }}
     }} catch(e) {{}}
   }}, 1000);
@@ -938,7 +1111,6 @@ hljs.highlightAll();
   const cancelBtn = document.getElementById("editCancelBtn");
   const saveBtn = document.getElementById("editSaveBtn");
   const status = document.getElementById("editStatus");
-  const filePath = "{filepath_js}";
   let originalText = "";
 
   function setStatus(msg) {{
@@ -949,10 +1121,19 @@ hljs.highlightAll();
     return textarea.value !== originalText;
   }}
 
+  // 他ファイルへ切替える前に呼ばれる。未保存なら確認し、OKなら編集を抜ける。
+  window.__editGuard = function() {{
+    if (document.body.classList.contains("editing")) {{
+      if (isDirty() && !confirm("Discard unsaved changes?")) return false;
+      exit(true);
+    }}
+    return true;
+  }};
+
   async function enter() {{
     setStatus("Loading...");
     try {{
-      const res = await fetch("/content?path=" + encodeURIComponent(filePath));
+      const res = await fetch("/content?path=" + encodeURIComponent(window.__md.path));
       if (!res.ok) throw new Error("HTTP " + res.status);
       const text = await res.text();
       originalText = text;
@@ -975,15 +1156,19 @@ hljs.highlightAll();
   async function save() {{
     setStatus("Saving...");
     try {{
-      const res = await fetch("/save?path=" + encodeURIComponent(filePath), {{
+      const res = await fetch("/save?path=" + encodeURIComponent(window.__md.path), {{
         method: "POST",
         headers: {{ "Content-Type": "text/plain; charset=utf-8" }},
         body: textarea.value,
       }});
       if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json().catch(() => null);
+      if (data && data.hash) window.__md.hash = data.hash;
       originalText = textarea.value;
       setStatus("Saved");
-      location.reload();
+      document.body.classList.remove("editing");
+      if (window.__reloadCurrent) window.__reloadCurrent();
+      else location.reload();
     }} catch(e) {{
       setStatus("Save failed: " + e.message);
       alert("Save failed: " + e.message);
@@ -1034,46 +1219,83 @@ hljs.highlightAll();
   }});
 }})();
 
-// --- TOC ---
+// --- Sidebar: Outline + Files ---
 (function() {{
   const toc = document.getElementById("toc");
   const tocBtn = document.getElementById("tocToggle");
-  const filePath = document.querySelector(".file-path");
-  const headings = [];
-  let el = filePath ? filePath.nextElementSibling : null;
-  while (el) {{
-    if (/^H[1-6]$/.test(el.tagName)) headings.push(el);
-    // also include nested headings (rare in our markdown but just in case)
-    el.querySelectorAll && el.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach(h => headings.push(h));
-    el = el.nextElementSibling;
-  }}
+  const tabs = document.getElementById("tocTabs");
+  const tabOutline = document.getElementById("tabOutline");
+  const tabFiles = document.getElementById("tabFiles");
+  const paneOutline = document.getElementById("paneOutline");
+  const paneFiles = document.getElementById("paneFiles");
+  const mdContent = document.getElementById("mdContent");
+  const filePathEl = document.getElementById("filePathEl");
 
-  const links = [];
-  headings.forEach((h, i) => {{
-    if (!h.id) h.id = "toc-h-" + i;
-    const a = document.createElement("a");
-    a.href = "#" + h.id;
-    a.textContent = h.textContent.trim();
-    a.className = "toc-" + h.tagName.toLowerCase();
-    a.addEventListener("click", (e) => {{
-      e.preventDefault();
-      const top = h.getBoundingClientRect().top + window.scrollY - 20;
-      window.scrollTo({{ top: top, behavior: "smooth" }});
+  // ---- Outline (headings) ----
+  let links = [];
+  let activeLink = null;
+  function rebuildOutline() {{
+    paneOutline.innerHTML = "";
+    links = [];
+    activeLink = null;
+    mdContent.querySelectorAll("h1,h2,h3,h4,h5,h6").forEach((h, i) => {{
+      if (!h.id) h.id = "toc-h-" + i;
+      const a = document.createElement("a");
+      a.href = "#" + h.id;
+      a.textContent = h.textContent.trim();
+      a.className = "toc-" + h.tagName.toLowerCase();
+      a.addEventListener("click", (e) => {{
+        e.preventDefault();
+        const top = h.getBoundingClientRect().top + window.scrollY - 20;
+        window.scrollTo({{ top: top, behavior: "smooth" }});
+      }});
+      paneOutline.appendChild(a);
+      links.push({{ heading: h, link: a }});
     }});
-    toc.appendChild(a);
-    links.push({{ heading: h, link: a }});
-  }});
+  }}
+  function updateActive() {{
+    if (!links.length) return;
+    const threshold = 80;
+    let cur = links[0];
+    for (const l of links) {{
+      const top = l.heading.getBoundingClientRect().top;
+      if (top <= threshold) cur = l;
+      else break;
+    }}
+    if (cur !== activeLink) {{
+      if (activeLink) activeLink.link.classList.remove("active");
+      activeLink = cur;
+      activeLink.link.classList.add("active");
+      const lr = activeLink.link.getBoundingClientRect();
+      const pr = paneOutline.getBoundingClientRect();
+      if (lr.top < pr.top + 40 || lr.bottom > pr.bottom - 20) {{
+        activeLink.link.scrollIntoView({{ block: "center", behavior: "auto" }});
+      }}
+    }}
+  }}
+  window.addEventListener("scroll", updateActive, {{ passive: true }});
 
+  // ---- Tabs ----
+  // 保存値は一度だけ読む（finalizeが二度走るため、表示中の上書きで保存値が壊れるのを防ぐ）
+  const savedTab = localStorage.getItem("md-preview-toc-tab") || "outline";
+  function setTab(name) {{
+    const isFiles = name === "files";
+    paneFiles.style.display = isFiles ? "" : "none";
+    paneOutline.style.display = isFiles ? "none" : "";
+    tabFiles.classList.toggle("active", isFiles);
+    tabOutline.classList.toggle("active", !isFiles);
+  }}
+  tabOutline.addEventListener("click", () => {{ setTab("outline"); localStorage.setItem("md-preview-toc-tab", "outline"); }});
+  tabFiles.addEventListener("click", () => {{ setTab("files"); localStorage.setItem("md-preview-toc-tab", "files"); }});
+
+  // ---- Open / close ----
   function setOpen(open) {{
     toc.classList.toggle("open", open);
     document.body.classList.toggle("toc-open", open);
     localStorage.setItem("md-preview-toc-open", open ? "1" : "0");
     if (window._rebuildMinimap) window._rebuildMinimap();
   }}
-  const savedOpen = localStorage.getItem("md-preview-toc-open") === "1";
-  setOpen(savedOpen && links.length > 0);
   tocBtn.addEventListener("click", () => setOpen(!toc.classList.contains("open")));
-
   document.addEventListener("keydown", (e) => {{
     if (e.ctrlKey && e.key === "\\\\") {{
       e.preventDefault();
@@ -1081,32 +1303,154 @@ hljs.highlightAll();
     }}
   }});
 
-  if (links.length > 0) {{
-    let active = null;
-    function updateActive() {{
-      const threshold = 80;
-      let current = links[0];
-      for (const l of links) {{
-        const top = l.heading.getBoundingClientRect().top;
-        if (top <= threshold) current = l;
-        else break;
-      }}
-      if (current !== active) {{
-        if (active) active.link.classList.remove("active");
-        active = current;
-        active.link.classList.add("active");
-        const linkRect = active.link.getBoundingClientRect();
-        const tocRect = toc.getBoundingClientRect();
-        if (linkRect.top < tocRect.top + 40 || linkRect.bottom > tocRect.bottom - 20) {{
-          active.link.scrollIntoView({{ block: "center", behavior: "auto" }});
-        }}
-      }}
-    }}
-    window.addEventListener("scroll", updateActive, {{ passive: true }});
-    updateActive();
-  }} else {{
-    tocBtn.style.display = "none";
+  // ---- Seamless file load (右ペインのみ差し替え。ツリー状態は維持) ----
+  function setActiveFile(abs) {{
+    paneFiles.querySelectorAll(".tree-file.active").forEach(a => a.classList.remove("active"));
+    paneFiles.querySelectorAll(".tree-file").forEach(a => {{
+      if (a.dataset.abs === abs) a.classList.add("active");
+    }});
   }}
+  function loadFile(abs, opts) {{
+    opts = opts || {{}};
+    if (window.__editGuard && !window.__editGuard()) return;
+    const keepScroll = !!opts.keepScroll;
+    const prevY = window.scrollY;
+    fetch("/render?path=" + encodeURIComponent(abs))
+      .then(r => {{ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }})
+      .then(data => {{
+        mdContent.innerHTML = data.html;
+        if (filePathEl) filePathEl.textContent = abs;
+        if (data.title) document.title = data.title;
+        window.__md.path = abs;
+        window.__md.hash = data.hash;
+        if (window.__processContent) window.__processContent();
+        rebuildOutline();
+        updateActive();
+        setActiveFile(abs);
+        if (opts.push !== false) {{
+          history.pushState({{ path: abs }}, "", "/view?path=" + encodeURIComponent(abs));
+        }}
+        window.scrollTo(0, keepScroll ? prevY : 0);
+      }})
+      .catch(() => {{ window.location = "/view?path=" + encodeURIComponent(abs); }});
+  }}
+  window.__reloadCurrent = function() {{ loadFile(window.__md.path, {{ push: false, keepScroll: true }}); }};
+  window.addEventListener("popstate", (e) => {{
+    const p = e.state && e.state.path;
+    if (p) loadFile(p, {{ push: false }});
+  }});
+
+  // ---- Files tree ----
+  const INDENT = 14, BASE = 8;
+  function buildTree(files) {{
+    const root = {{ dirs: {{}}, files: [] }};
+    files.forEach(f => {{
+      const parts = f.rel.split("/");
+      let node = root;
+      for (let i = 0; i < parts.length - 1; i++) {{
+        const d = parts[i];
+        node.dirs[d] = node.dirs[d] || {{ dirs: {{}}, files: [] }};
+        node = node.dirs[d];
+      }}
+      node.files.push({{ name: parts[parts.length - 1], abs: f.abs }});
+    }});
+    return root;
+  }}
+  // 現在ファイルへ至るフォルダパスを展開状態にするための集合
+  function pathDirs(rel) {{
+    const parts = rel.split("/");
+    const set = {{}};
+    let acc = "";
+    for (let i = 0; i < parts.length - 1; i++) {{
+      acc = acc ? acc + "/" + parts[i] : parts[i];
+      set[acc] = true;
+    }}
+    return set;
+  }}
+  function renderInto(ul, node, prefix, depth, openDirs) {{
+    Object.keys(node.dirs).sort().forEach(name => {{
+      const full = prefix ? prefix + "/" + name : name;
+      const li = document.createElement("li");
+      li.className = "tree-folder";
+      if (!openDirs[full]) li.classList.add("collapsed");
+      const row = document.createElement("div");
+      row.className = "tree-row";
+      row.style.paddingLeft = (BASE + depth * INDENT) + "px";
+      const caret = document.createElement("span");
+      caret.className = "tree-caret";
+      caret.textContent = "\\u25be";
+      const nm = document.createElement("span");
+      nm.className = "tree-name";
+      nm.textContent = name;
+      row.appendChild(caret);
+      row.appendChild(nm);
+      row.addEventListener("click", () => li.classList.toggle("collapsed"));
+      li.appendChild(row);
+      const childUl = document.createElement("ul");
+      renderInto(childUl, node.dirs[name], full, depth + 1, openDirs);
+      li.appendChild(childUl);
+      ul.appendChild(li);
+    }});
+    node.files.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {{
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.className = "tree-row tree-file";
+      a.href = "/view?path=" + encodeURIComponent(f.abs);
+      a.dataset.abs = f.abs;
+      a.style.paddingLeft = (BASE + depth * INDENT) + "px";
+      const caret = document.createElement("span");
+      caret.className = "tree-caret";  // ファイルはキャレット無し（位置揃えのスペーサー）
+      const nm = document.createElement("span");
+      nm.className = "tree-name";
+      nm.textContent = f.name;
+      nm.title = f.name;
+      a.appendChild(caret);
+      a.appendChild(nm);
+      if (f.abs === window.__md.path) a.classList.add("active");
+      a.addEventListener("click", (e) => {{ e.preventDefault(); loadFile(f.abs, {{ push: true }}); }});
+      li.appendChild(a);
+      ul.appendChild(li);
+    }});
+  }}
+
+  function finalize() {{
+    const hasOutline = links.length > 0;
+    const hasFiles = paneFiles.childElementCount > 0;
+    tabOutline.style.display = hasOutline ? "" : "none";
+    tabFiles.style.display = hasFiles ? "" : "none";
+    tabs.style.display = (hasOutline && hasFiles) ? "" : "none";
+    let tab = savedTab;
+    if (tab === "outline" && !hasOutline) tab = "files";
+    if (tab === "files" && !hasFiles) tab = "outline";
+    setTab(tab);
+    tocBtn.style.display = (hasOutline || hasFiles) ? "" : "none";
+    const savedOpen = localStorage.getItem("md-preview-toc-open") === "1";
+    setOpen(savedOpen && (hasOutline || hasFiles));
+  }}
+
+  // 初期化: アウトライン構築 → 一度確定 → ファイル一覧（git）を一度だけ取得して確定
+  rebuildOutline();
+  updateActive();
+  finalize();
+  history.replaceState({{ path: window.__md.path }}, "", location.href);
+  fetch("/files?path=" + encodeURIComponent(window.__md.path))
+    .then(r => r.json())
+    .then(data => {{
+      const files = (data && data.files) || [];
+      if (files.length > 1) {{
+        const tree = buildTree(files);
+        const cur = files.find(f => f.abs === window.__md.path);
+        const openDirs = cur ? pathDirs(cur.rel) : {{}};
+        const rootUl = document.createElement("ul");
+        rootUl.className = "toc-tree";
+        renderInto(rootUl, tree, "", 0, openDirs);
+        paneFiles.appendChild(rootUl);
+        const act = paneFiles.querySelector(".tree-file.active");
+        if (act) act.scrollIntoView({{ block: "center" }});
+      }}
+      finalize();
+    }})
+    .catch(() => {{}});
 }})();
 
 // --- Minimap ---
@@ -1151,8 +1495,12 @@ hljs.highlightAll();
     }}
   }}
 
-  buildMinimapContent();
-  applyScale();
+  // 未処理の mermaid 図がある間は初期構築を遅延し、mermaid.run().finally() 内の
+  // _rebuildMinimap() に任せる（描画途中の clone 競合を避ける）。
+  if (!(window.mermaid && document.querySelector(".mermaid:not([data-processed])"))) {{
+    buildMinimapContent();
+    applyScale();
+  }}
 
   window._rebuildMinimap = function() {{ buildMinimapContent(); applyScale(); updateViewport(); }};
   window._updateMinimapScale = function() {{ applyScale(); updateViewport(); }};
@@ -1247,6 +1595,42 @@ def render_markdown(filepath: str) -> tuple[str, str]:
     return html, content_hash
 
 
+def list_repo_markdown(filepath: str) -> dict:
+    """filepathが属するgitリポジトリ内の追跡済み.mdファイル一覧を返す。
+
+    gitリポジトリでない/gitが無い場合は {"root": None, "files": []} を返し、
+    呼び出し側でフォールバックできるようにする。
+    """
+    empty = {"root": None, "files": []}
+    base = Path(filepath).parent
+    if not base.exists():
+        return empty
+    try:
+        top = subprocess.run(
+            ["git", "-C", str(base), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, encoding="utf-8", timeout=5,
+        )
+        if top.returncode != 0:
+            return empty
+        root = top.stdout.strip()
+        if not root:
+            return empty
+        listed = subprocess.run(
+            ["git", "-C", root, "ls-files"],
+            capture_output=True, text=True, encoding="utf-8", timeout=5,
+        )
+        if listed.returncode != 0:
+            return empty
+        rels = sorted(
+            line for line in listed.stdout.splitlines()
+            if line.lower().endswith(".md")
+        )
+        files = [{"rel": rel, "abs": f"{root}/{rel}"} for rel in rels]
+        return {"root": root, "files": files}
+    except (OSError, subprocess.SubprocessError):
+        return empty
+
+
 class MarkdownHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -1303,6 +1687,39 @@ class MarkdownHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
             self.write(text.encode("utf-8"))
+            return
+
+        if parsed.path == "/files":
+            params = parse_qs(parsed.query)
+            filepath = params.get("path", [None])[0]
+            if not filepath:
+                self.send_error(400, "Missing path parameter")
+                return
+            filepath = unquote(filepath)
+            result = list_repo_markdown(filepath)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.write(json.dumps(result).encode())
+            return
+
+        if parsed.path == "/render":
+            # レンダリング済みHTML断片 + ハッシュをJSONで返す（シームレスなファイル切替用）。
+            params = parse_qs(parsed.query)
+            filepath = params.get("path", [None])[0]
+            if not filepath:
+                self.send_error(400, "Missing path parameter")
+                return
+            filepath = unquote(filepath)
+            html_content, content_hash = render_markdown(filepath)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.write(json.dumps({
+                "html": html_content,
+                "hash": content_hash,
+                "title": Path(filepath).name,
+            }).encode())
             return
 
         if parsed.path.startswith("/static/"):
@@ -1376,7 +1793,9 @@ def main():
     parser.add_argument("file", nargs="?", help="Open a specific .md file")
     args = parser.parse_args()
 
-    server = HTTPServer(("127.0.0.1", args.port), MarkdownHandler)
+    # ThreadingHTTPServer: 大きな静的ファイル(mermaid.min.js 3.3MB)配信中も
+    # ブラウザのポーリング/他リクエストでブロックしないよう各接続を別スレッドで処理する。
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), MarkdownHandler)
     print(f"Markdown server running at http://localhost:{args.port}")
 
     if args.file:
