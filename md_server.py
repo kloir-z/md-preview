@@ -1664,39 +1664,82 @@ def render_markdown(filepath: str) -> tuple[str, str]:
     return html, content_hash
 
 
-def list_repo_markdown(filepath: str) -> dict:
-    """filepathが属するgitリポジトリ内の追跡済み.mdファイル一覧を返す。
+# ファイルシステム走査時に降りないディレクトリ（重い/無関係なもの）
+_SCAN_EXCLUDE_DIRS = {
+    ".git", "node_modules", ".venv", "venv", "__pycache__", ".idea",
+    ".vscode", "dist", "build", ".next", ".cache", ".tox", ".mypy_cache",
+    ".pytest_cache", "site-packages",
+}
+# フォールバック走査の上限件数（巨大ツリーで固まらないための安全弁）
+_SCAN_MAX_FILES = 1000
 
-    gitリポジトリでない/gitが無い場合は {"root": None, "files": []} を返し、
-    呼び出し側でフォールバックできるようにする。
+
+def _scan_dir_markdown(base: Path) -> dict:
+    """gitを使わず、baseフォルダ以下の.mdをファイルシステム走査で列挙する。
+
+    rel/absはgit版と同じく前方スラッシュ表記で返す（フロントのbuildTree・
+    選択ハイライトがwindow.__md.path（前方スラッシュ）と整合するように）。
+    """
+    root = base.resolve()
+    files = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        # 除外ディレクトリと隠しディレクトリは降りない（in-placeでprune）
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in _SCAN_EXCLUDE_DIRS and not d.startswith(".")
+        ]
+        for fn in filenames:
+            if fn.lower().endswith(".md"):
+                p = Path(dirpath) / fn
+                files.append({
+                    "rel": p.relative_to(root).as_posix(),
+                    "abs": p.resolve().as_posix(),
+                })
+                if len(files) >= _SCAN_MAX_FILES:
+                    files.sort(key=lambda x: x["rel"].lower())
+                    return {"root": root.as_posix(), "files": files}
+    files.sort(key=lambda x: x["rel"].lower())
+    return {"root": root.as_posix(), "files": files}
+
+
+def list_repo_markdown(filepath: str) -> dict:
+    """filepathの周辺にある.mdファイル一覧を返す。
+
+    優先: 属するgitリポジトリ内の追跡済み.md（`git ls-files`）。
+    フォールバック: gitリポジトリでない/gitが無い場合は、開いたファイルの
+    フォルダ以下をファイルシステム走査して.mdを列挙する（git管理外でも
+    Filesサイドバーが使えるように）。
+    どちらも不可なら {"root": None, "files": []}。
     """
     empty = {"root": None, "files": []}
     base = Path(filepath).parent
     if not base.exists():
         return empty
+    # 1) git追跡ファイル（優先）
     try:
         top = subprocess.run(
             ["git", "-C", str(base), "rev-parse", "--show-toplevel"],
             capture_output=True, text=True, encoding="utf-8", timeout=5,
         )
-        if top.returncode != 0:
-            return empty
-        root = top.stdout.strip()
-        if not root:
-            return empty
-        listed = subprocess.run(
-            ["git", "-C", root, "ls-files"],
-            capture_output=True, text=True, encoding="utf-8", timeout=5,
-        )
-        if listed.returncode != 0:
-            return empty
-        rels = sorted(
-            line for line in listed.stdout.splitlines()
-            if line.lower().endswith(".md")
-        )
-        files = [{"rel": rel, "abs": f"{root}/{rel}"} for rel in rels]
-        return {"root": root, "files": files}
+        if top.returncode == 0 and top.stdout.strip():
+            root = top.stdout.strip()
+            listed = subprocess.run(
+                ["git", "-C", root, "ls-files"],
+                capture_output=True, text=True, encoding="utf-8", timeout=5,
+            )
+            if listed.returncode == 0:
+                rels = sorted(
+                    line for line in listed.stdout.splitlines()
+                    if line.lower().endswith(".md")
+                )
+                files = [{"rel": rel, "abs": f"{root}/{rel}"} for rel in rels]
+                return {"root": root, "files": files}
     except (OSError, subprocess.SubprocessError):
+        pass
+    # 2) フォールバック: ファイルシステム走査（git管理外）
+    try:
+        return _scan_dir_markdown(base)
+    except OSError:
         return empty
 
 

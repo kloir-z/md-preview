@@ -16,7 +16,7 @@ Markdown Preview Server -- ローカルのMarkdownファイルをブラウザで
 - `config.py` -- 共通設定（`DEFAULT_PORT`等）。`md_server.py`と`md_open.pyw`から参照。
 - `md_server.py` -- HTTPサーバー本体。`HTML_TEMPLATE`内にCSS/HTML/JSをすべて含む。`markdown`ライブラリでHTML変換、highlight.jsでコードハイライト。MD5ハッシュによるポーリングで変更検知・自動リロード。
   - **テーマ**: 8種のダーク系プリセット + .itermcolorsカラーインポートによるカスタムテーマ。CSS変数ベース。
-  - **サイドバー**: 左側にOutline（見出し目次・スクロール追従ハイライト）とFiles（同じgitリポジトリ内の追跡済み`.md`フォルダツリー）のタブ。ファイル/フォルダはSVGアイコンで識別（フォルダは見出し色で強調）。Filesのファイルクリックで右ペイン（`#mdContent`）を`/render`でAjax差し替え（フルリロードせず、mermaid/hljsを再利用）。URL（`history.pushState`）・タイトル・アウトライン・ミニマップ・選択ハイライトを追従更新。ツリーの展開状態は維持。右端のドラッグハンドルで幅変更（`--toc-width`）。
+  - **サイドバー**: 左側にOutline（見出し目次・スクロール追従ハイライト）とFiles（`.md`フォルダツリー。gitリポジトリ内なら追跡済み`.md`、git管理外なら開いたファイルのフォルダ以下を走査）のタブ。ファイル/フォルダはSVGアイコンで識別（フォルダは見出し色で強調）。Filesのファイルクリックで右ペイン（`#mdContent`）を`/render`でAjax差し替え（フルリロードせず、mermaid/hljsを再利用）。URL（`history.pushState`）・タイトル・アウトライン・ミニマップ・選択ハイライトを追従更新。ツリーの展開状態は維持。右端のドラッグハンドルで幅変更（`--toc-width`）。
   - **ミニマップ**: 画面右端にVSCodeスタイルのミニマップ（CSS Transform方式でDOMクローンを縮小表示）。クリック/ドラッグでスクロール。左端のドラッグハンドルで幅変更（`--minimap-width`、設定スライダーと同期）。
   - **設定モーダル**: テーマ選択（ドロップダウン）、コードテーマ選択（シンタックスハイライト、`hljs/`の8種から切替。アプリテーマとは独立。背景は`--code-bg`に統一しトークン色のみ反映）、カラーインポート（.itermcolors XML貼り付け）、見出し色カスタマイズ（H1-H4、パレットから選択+シャッフル）、レイアウト設定（箇条書きマージン・最大横幅・ミニマップ幅スライダー）。
   - **永続化**: すべての設定（テーマ・色・レイアウト・サイドバー幅/開閉/タブ・ミニマップ幅）をlocalStorageに保存、ページロード時に即座に適用。
@@ -29,7 +29,7 @@ Markdown Preview Server -- ローカルのMarkdownファイルをブラウザで
 - `GET /hash?path=<filepath>` -- ファイルのMD5ハッシュを返す（自動リロード用）
 - `GET /content?path=<filepath>` -- ファイルの生テキストを返す（編集モード用）
 - `GET /render?path=<filepath>` -- レンダリング済みHTML断片+ハッシュ+タイトルをJSONで返す（シームレスなファイル切替・自動リロード用）
-- `GET /files?path=<filepath>` -- そのファイルが属するgitリポジトリ内の追跡済み`.md`一覧をJSONで返す（サイドバーのFilesタブ用）。git管理外なら空。
+- `GET /files?path=<filepath>` -- そのファイル周辺の`.md`一覧をJSONで返す（サイドバーのFilesタブ用）。優先: 属するgitリポジトリの追跡済み`.md`。フォールバック: git管理外なら開いたファイルのフォルダ以下をファイルシステム走査（`.git`/`node_modules`等は除外、上限1000件）。
 - `GET /open?path=<filepath>` -- `/view`へリダイレクト
 - `GET /static/<file>` -- 静的ファイル配信
 - `POST /save?path=<filepath>` -- 編集内容を保存（編集モード用）
@@ -41,7 +41,7 @@ Markdown Preview Server -- ローカルのMarkdownファイルをブラウザで
 - `md_open.pyw`は`DETACHED_PROCESS`フラグでサーバーをバックグラウンド起動。
 - UIはすべて`HTML_TEMPLATE`内に埋め込み（単一ファイル構成）。新規HTMLファイルなし。
 - ミニマップはCSS Transform方式（Canvas描画ではない）。テーマ変更に自動追従。
-- Files一覧はgit（`git -C <dir> rev-parse --show-toplevel` → `git ls-files`）で取得し、開いたファイルが属するリポジトリを対象にする。git管理外は非表示にフォールバック。
+- Files一覧はgit（`git -C <dir> rev-parse --show-toplevel` → `git ls-files`）を優先し、開いたファイルが属するリポジトリを対象にする。git管理外は開いたファイルのフォルダ以下をファイルシステム走査するフォールバックで一覧化（`.git`/`node_modules`等除外・上限1000件）。rel/absは前方スラッシュ表記で返し、`window.__md.path`との選択ハイライト整合を保つ。
 - ファイル切替はフルリロードせず`/render`でAjax差し替え（mermaid 3.3MB等の再パースとgit再読込を回避）。現在表示中の状態は`window.__md`で共有。
 
 ## Development
