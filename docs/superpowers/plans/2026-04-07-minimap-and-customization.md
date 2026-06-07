@@ -8,7 +8,7 @@
 
 **Tech Stack:** HTML/CSS/JS（vanilla）、DOMParser（XML plist解析）、localStorage
 
-**Important:** `md_server.py` を変更した場合、動作確認のためサービスを再起動する: `powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"`
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 
 ---
 
@@ -139,10 +139,10 @@ git commit -m "feat: add minimap HTML structure and CSS"
 }})();
 ```
 
-- [ ] **Step 2: サービスを再起動して動作確認**
+- [ ] **Step 2: サーバーを再起動して動作確認**
 
 ```bash
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 ブラウザでMarkdownファイルを開き、右端にミニマップが表示されていること、スクロールでビューポートインジケーターが動くことを確認。
@@ -194,10 +194,10 @@ Task 2で追加したミニマップIIFE内の `updateViewport();` の直後、`
   }});
 ```
 
-- [ ] **Step 2: サービスを再起動して動作確認**
+- [ ] **Step 2: サーバーを再起動して動作確認**
 
 ```bash
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 ミニマップをクリック→その位置にスクロール。ドラッグ→スクロール追従を確認。
@@ -478,10 +478,10 @@ git commit -m "feat: replace settings popup with modal UI"
 
 この関数は閉じないでおく（Task 6, 7 でコードを追加してからIIFEを閉じる）。
 
-- [ ] **Step 2: サービスを再起動して動作確認**
+- [ ] **Step 2: サーバーを再起動して動作確認**
 
 ```bash
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 歯車ボタンクリック→モーダル表示→テーマ切替→×ボタンとオーバーレイクリックで閉じるを確認。
@@ -623,10 +623,10 @@ if (savedTheme === "custom") {{
 }}
 ```
 
-- [ ] **Step 4: サービスを再起動して動作確認**
+- [ ] **Step 4: サーバーを再起動して動作確認**
 
 ```bash
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 モーダルのImport ColorsテキストエリアにiTerm2 plist XMLを貼り付け→Apply→テーマが変わることを確認。ページリロード後も維持されることを確認。
@@ -727,10 +727,10 @@ if (savedMaxWidth) document.body.style.maxWidth = savedMaxWidth + "px";
 
 注: `savedMaxWidth` は `<head>` のスクリプトで定義済みなので `<body>` 直後のスクリプトから参照可能。
 
-- [ ] **Step 4: サービスを再起動して動作確認**
+- [ ] **Step 4: サーバーを再起動して動作確認**
 
 ```bash
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 モーダルのLayoutセクションでスライダーを動かし、箇条書きマージンと最大横幅がリアルタイムに変わることを確認。リロード後も維持されることを確認。
@@ -771,10 +771,10 @@ git commit -m "feat: add layout settings (list margin, max width) with persisten
       if (window._rebuildMinimap) window._rebuildMinimap();
 ```
 
-- [ ] **Step 2: サービスを再起動して全機能を統合テスト**
+- [ ] **Step 2: サーバーを再起動して全機能を統合テスト**
 
 ```bash
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 確認項目:

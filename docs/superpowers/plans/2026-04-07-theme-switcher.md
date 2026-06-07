@@ -112,10 +112,10 @@ applyTheme(savedTheme);
 
 注意: `HTML_TEMPLATE` は Python の f-string 風テンプレートなので `{{` `}}` がエスケープされた `{` `}` になる。
 
-- [ ] **Step 2: サービス再起動して動作確認**
+- [ ] **Step 2: サーバー再起動して動作確認**
 
 ```powershell
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 ブラウザで `http://localhost:3030/view?path=C:/code/md-preview/README.md` を開き、ページが正常に表示されることを確認。コンソールにJSエラーがないことを確認。
@@ -205,10 +205,10 @@ git commit -m "feat: add theme definitions and early theme application script"
 </div>
 ```
 
-- [ ] **Step 3: サービス再起動して動作確認**
+- [ ] **Step 3: サーバー再起動して動作確認**
 
 ```powershell
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 ブラウザで確認。右下に歯車ボタンが表示されることを確認（まだ動作しない）。
@@ -271,10 +271,10 @@ git commit -m "feat: add settings panel UI (HTML + CSS)"
 }})();
 ```
 
-- [ ] **Step 2: サービス再起動して全機能を動作確認**
+- [ ] **Step 2: サーバー再起動して全機能を動作確認**
 
 ```powershell
-powershell -Command "Start-Process powershell -ArgumentList '-Command','Restart-Service md-preview' -Verb RunAs"
+# 起動中のサーバープロセスを再起動して反映（pythonw md_server.py を停止 → 再度起動）
 ```
 
 ブラウザで確認:
