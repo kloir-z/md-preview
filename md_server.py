@@ -319,6 +319,13 @@ HTML_TEMPLATE = """\
     pointer-events: none;
     min-height: 10px;
   }}
+  /* スリムで背景に溶け込むスクロールバー（WebKit + Firefox） */
+  * {{ scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }}
+  ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+  ::-webkit-scrollbar-track {{ background: transparent; }}
+  ::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.16); border-radius: 4px; }}
+  ::-webkit-scrollbar-thumb:hover {{ background: rgba(255,255,255,0.30); }}
+  ::-webkit-scrollbar-corner {{ background: transparent; }}
   /* TOC */
   .toc {{
     position: fixed;
@@ -328,8 +335,10 @@ HTML_TEMPLATE = """\
     height: 100vh;
     background: var(--code-bg);
     border-right: 1px solid var(--border);
-    overflow-y: auto;
-    padding: 48px 8px 20px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 8px 20px;
     z-index: 500;
     font-size: 13px;
     box-sizing: border-box;
@@ -337,6 +346,59 @@ HTML_TEMPLATE = """\
     transition: transform 0.18s ease;
   }}
   .toc.open {{ transform: translateX(0); }}
+  /* パネル領域: 残り高さを占有してスクロール（単独表示モードはここが縦スクロール） */
+  .toc-panes {{ flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }}
+  /* 両方表示（分割）モード: 左Files / 右Outline を横並び・個別スクロール。境界はドラッグ可。 */
+  .toc.split .toc-panes {{ display: flex; flex-direction: row; overflow: hidden; }}
+  .toc.split .toc-pane {{ min-width: 0; overflow-y: auto; overflow-x: hidden; display: block !important; }}
+  .toc.split #paneFiles {{ order: 0; flex: 0 0 var(--toc-split, 50%); padding-right: 6px; }}
+  .toc.split #paneOutline {{ order: 2; flex: 1 1 0; padding-left: 8px; }}
+  .toc-split-resize {{ display: none; }}
+  .toc.split .toc-split-resize {{
+    display: block;
+    order: 1;
+    flex: 0 0 5px;
+    margin: 0 -2px;
+    cursor: col-resize;
+    background: var(--border);
+    opacity: 0.5;
+    z-index: 1;
+  }}
+  .toc.split .toc-split-resize:hover {{ background: var(--link); opacity: 0.6; }}
+  /* モードセレクタ（Files / Outline / Both）。内容が無いボタンはdisabled表示。 */
+  .toc-modes {{ display: flex; gap: 2px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }}
+  .toc-mode-btn {{
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--fg);
+    opacity: 0.55;
+    padding: 6px 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }}
+  .toc-mode-btn:hover {{ opacity: 0.85; }}
+  .toc-mode-btn.active {{ opacity: 1; color: var(--link); border-bottom-color: var(--link); }}
+  .toc-mode-btn:disabled {{ opacity: 0.22; cursor: default; }}
+  /* 見切れた項目はホバー時、その行だけ枠をはみ出して全文表示する。
+     位置・文字色・サイズを元の行に合わせ、別物でなく「行が右へ続く」ように見せる。 */
+  #treeTip {{
+    position: fixed;
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    box-sizing: border-box;
+    /* ホバー時の淡いハイライト(0.06)を code-bg に合成し、行の見た目に揃える */
+    background: linear-gradient(rgba(255,255,255,0.06), rgba(255,255,255,0.06)), var(--code-bg);
+    color: var(--fg);
+    white-space: nowrap;
+    pointer-events: none;
+    padding-right: 12px;
+    border-radius: 0 4px 4px 0;
+    box-shadow: 3px 0 10px rgba(0,0,0,0.4);
+  }}
+  #treeTip.show {{ display: flex; }}
   .toc li {{ margin: 0; }}  /* ツリー行間の隙間（global li margin）を打ち消す */
   /* リサイズハンドル（左サイドバー右端 / ミニマップ左端） */
   .toc-resize {{
@@ -362,7 +424,8 @@ HTML_TEMPLATE = """\
     cursor: col-resize;
     z-index: 600;
   }}
-  .toc a {{
+  /* アウトラインのリンク専用（#paneOutline限定。Filesの<a.tree-file>に波及させない） */
+  #paneOutline a {{
     display: block;
     color: var(--fg);
     text-decoration: none;
@@ -374,50 +437,27 @@ HTML_TEMPLATE = """\
     text-overflow: ellipsis;
     white-space: nowrap;
   }}
-  .toc a:hover {{ opacity: 1; background: rgba(255,255,255,0.04); }}
-  .toc a.active {{
+  #paneOutline a:hover {{ opacity: 1; background: rgba(255,255,255,0.04); }}
+  #paneOutline a.active {{
     opacity: 1;
     border-left-color: var(--link);
     color: var(--link);
     background: rgba(255,255,255,0.03);
   }}
-  .toc .toc-h1 {{ font-weight: 600; }}
-  .toc .toc-h2 {{ padding-left: 18px; }}
-  .toc .toc-h3 {{ padding-left: 32px; font-size: 12px; }}
-  .toc .toc-h4 {{ padding-left: 46px; font-size: 12px; }}
-  .toc .toc-h5 {{ padding-left: 60px; font-size: 11px; }}
-  .toc .toc-h6 {{ padding-left: 74px; font-size: 11px; }}
-  .toc-tabs {{
-    display: flex;
-    gap: 4px;
-    margin-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-  }}
-  .toc-tab {{
-    flex: 1;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--fg);
-    opacity: 0.55;
-    padding: 6px 4px;
-    font-size: 12px;
-    cursor: pointer;
-  }}
-  .toc-tab:hover {{ opacity: 0.85; }}
-  .toc-tab.active {{
-    opacity: 1;
-    color: var(--link);
-    border-bottom-color: var(--link);
-  }}
+  #paneOutline .toc-h1 {{ font-weight: 600; }}
+  #paneOutline .toc-h2 {{ padding-left: 18px; }}
+  #paneOutline .toc-h3 {{ padding-left: 32px; font-size: 12px; }}
+  #paneOutline .toc-h4 {{ padding-left: 46px; font-size: 12px; }}
+  #paneOutline .toc-h5 {{ padding-left: 60px; font-size: 11px; }}
+  #paneOutline .toc-h6 {{ padding-left: 74px; font-size: 11px; }}
+  /* モードセレクタ（.toc-modes / .toc-mode-btn）のスタイルは上部にまとめて定義 */
   /* file tree (Files tab) -- 行は全幅・隙間なし、インデントはpadding-leftで均等付与 */
   .toc-tree, .toc-tree ul {{ list-style: none; margin: 0; padding: 0; }}
   .tree-row {{
     display: flex;
     align-items: center;
     gap: 4px;
-    /* サイドバーの左右パディング(8px)を打ち消して行を全幅化（ホバー領域を端まで） */
-    margin: 0 -8px;
+    margin: 0;
     padding: 4px 8px;
     color: var(--fg);
     text-decoration: none;
@@ -437,23 +477,15 @@ HTML_TEMPLATE = """\
     border-left-color: var(--link);
     background: rgba(255,255,255,0.04);
   }}
-  .tree-caret {{
-    flex: 0 0 16px;
-    width: 16px;
-    font-size: 13px;
-    line-height: 1;
-    text-align: center;
-    opacity: 0.85;
-    transition: transform 0.12s;
-  }}
-  /* フォルダの開閉キャレットは見出し色で強調し、開閉が一目で分かるようにする */
-  .tree-folder > .tree-row .tree-caret {{ color: var(--heading); opacity: 1; }}
   .tree-folder.collapsed > ul {{ display: none; }}
-  .tree-folder.collapsed > .tree-row .tree-caret {{ transform: rotate(-90deg); }}
-  .tree-name {{ overflow: hidden; text-overflow: ellipsis; }}
+  .tree-name {{ flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }}
   /* ファイル/フォルダ識別アイコン（SVG, currentColor追従）。フォルダは見出し色で強調。 */
-  .tree-icon {{ flex: 0 0 16px; display: inline-flex; align-items: center; justify-content: center; }}
+  .tree-icon {{ flex: 0 0 16px; display: inline-flex; align-items: center; justify-content: center; margin-right: 3px; }}
   .tree-icon svg {{ display: block; }}
+  /* フォルダアイコンで開閉を表現: 展開時=開いたフォルダ、折り畳み時=閉じたフォルダ */
+  .tree-icon .icon-closed {{ display: none; }}
+  .tree-folder.collapsed > .tree-row .tree-icon .icon-open {{ display: none; }}
+  .tree-folder.collapsed > .tree-row .tree-icon .icon-closed {{ display: block; }}
   .tree-folder > .tree-row .tree-icon {{ color: var(--heading); opacity: 0.9; }}
   .tree-file .tree-icon {{ color: var(--fg); opacity: 0.55; }}
   .tree-file.active .tree-icon {{ color: var(--link); opacity: 1; }}
@@ -465,8 +497,41 @@ HTML_TEMPLATE = """\
     border-left-color: var(--link);
     background: rgba(255,255,255,0.04);
   }}
-  .tree-folder.collapsed.has-active > .tree-row .tree-icon,
-  .tree-folder.collapsed.has-active > .tree-row .tree-caret {{ color: var(--link); opacity: 1; }}
+  .tree-folder.collapsed.has-active > .tree-row .tree-icon {{ color: var(--link); opacity: 1; }}
+  /* ファイルが多いフォルダ: 直下のファイル群を固定高スクロール枠にまとめる。
+     左マージン（枠の左端=上位フォルダのx位置）はJSでインラインに設定する。 */
+  .tree-filebox {{
+    max-height: 240px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin: 2px 4px 4px 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.02);
+  }}
+  .tree-filebox > ul {{ padding: 2px 0; }}
+  /* ツリーのインデントとガイド: フォルダの中身（ネストした子ul）を1段下げ、
+     各項目に縦＋横の点線コネクタ（├）を描く。最後の項目は縦線を行の中央(13px)で
+     止めて └ にする。縦線はli高さ100%なので折り畳み時も子の有無に自動追従する。 */
+  .toc-tree ul.tree-children {{ margin-left: 16px; }}
+  .tree-children > li {{ position: relative; }}
+  .tree-children > li::before {{
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    border-left: 1px dotted var(--border);
+  }}
+  .tree-children > li:last-child::before {{ height: 13px; }}  /* └: 行中央で止める */
+  .tree-children > li::after {{
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 13px;
+    width: 9px;
+    border-top: 1px dotted var(--border);
+  }}
   .toc-toggle {{
     position: fixed;
     top: 10px;
@@ -484,10 +549,20 @@ HTML_TEMPLATE = """\
     justify-content: center;
     z-index: 1000;
     opacity: 0.5;
-    transition: opacity 0.2s, left 0.18s ease;
+    transition: opacity 0.2s, left 0.18s ease, top 0.18s ease;
   }}
   .toc-toggle:hover {{ opacity: 1; }}
-  body.toc-open .toc-toggle {{ left: calc(var(--toc-width) - 30px); }}
+  /* サイドバーを開いている時: ハンバーガーはサイドバー右端の外側（Splitボタンの右）へ。
+     普段は非表示で、サイドバーかボタン自身にマウスを近づけた時だけ半透明で出す。 */
+  body.toc-open .toc-toggle {{
+    top: 8px;
+    left: var(--toc-width);
+    opacity: 0;
+    pointer-events: none;
+  }}
+  body.toc-open .toc.toggle-near ~ .toc-toggle,
+  body.toc-open .toc-toggle:hover {{ opacity: 0.4; pointer-events: auto; }}
+  body.toc-open .toc-toggle:hover {{ opacity: 0.85; }}
   body.toc-open {{ margin-left: calc(var(--toc-width) + 20px); margin-right: 20px; }}
   /* Edit mode */
   .edit-btn {{
@@ -663,6 +738,8 @@ function applyTheme(keyOrTheme) {{
   Object.keys(theme).forEach(k => {{
     if (k.startsWith("--")) root.style.setProperty(k, theme[k]);
   }});
+  // テーマ本来のfg（明度調整の基準。dim結果が累積しないよう素の値を保持）
+  if (theme["--fg"]) root.style.setProperty("--fg-theme", theme["--fg"]);
 }}
 
 const savedTheme = localStorage.getItem("md-preview-theme") || "monokai";
@@ -674,14 +751,45 @@ if (savedTheme === "custom") {{
 }}
 const savedCodeTheme = localStorage.getItem("md-preview-code-theme") || DEFAULT_CODE_THEME;
 applyCodeTheme(savedCodeTheme);
-// ユーザーが上書きした色（見出しH1-H4 + 本文--fg）。テーマ切替で--fgは
-// applyThemeに上書きされるため、テーマ適用のたびに再適用してHxと同様に維持する。
-const USER_COLOR_VARS = ["--h1-color","--h2-color","--h3-color","--h4-color","--fg"];
+// ユーザーが上書きした色。テーマ切替で上書きされるため、テーマ適用のたびに再適用する。
+function _parseColor(s) {{
+  s = (s || "").trim();
+  if (s[0] === "#") {{
+    if (s.length === 4) s = "#" + s[1]+s[1]+s[2]+s[2]+s[3]+s[3];
+    if (s.length >= 7) return [parseInt(s.slice(1,3),16), parseInt(s.slice(3,5),16), parseInt(s.slice(5,7),16)];
+  }}
+  const m = s.match(/rgba?\\(([^)]+)\\)/);
+  if (m) {{ const p = m[1].split(",").map(x => parseFloat(x)); return [p[0]||0, p[1]||0, p[2]||0]; }}
+  return null;
+}}
+// RGBをf倍して暗くする（まぶしさ低減の明度調整。f=1で無変化）
+function _dim(color, f) {{
+  const rgb = _parseColor(color);
+  if (!rgb) return color;
+  const d = c => Math.max(0, Math.min(255, Math.round(c * f)));
+  return "rgb(" + d(rgb[0]) + "," + d(rgb[1]) + "," + d(rgb[2]) + ")";
+}}
+// 本文色: 選択色（無ければテーマの--fg）を明度(brightness%)で暗くして適用
+function applyBodyColor() {{
+  const base = localStorage.getItem("md-preview--fg");
+  const b = parseInt(localStorage.getItem("md-preview-fg-brightness") || "100", 10);
+  const root = document.documentElement;
+  const themeFg = getComputedStyle(root).getPropertyValue("--fg-theme").trim();
+  if (!base && b >= 100) {{
+    // 既定に戻す: テーマの素のfgを再適用（過去のdim結果を残さない）
+    if (themeFg) root.style.setProperty("--fg", themeFg);
+    return;
+  }}
+  // 基準色は「選択色」または「テーマの素のfg」。現在の--fg（dim済みかも）は使わない＝累積防止。
+  const baseColor = base || themeFg || getComputedStyle(root).getPropertyValue("--fg").trim();
+  root.style.setProperty("--fg", _dim(baseColor, b / 100));
+}}
 function applyUserColors() {{
-  USER_COLOR_VARS.forEach(k => {{
+  ["--h1-color","--h2-color","--h3-color","--h4-color"].forEach(k => {{
     const v = localStorage.getItem("md-preview-" + k);
     if (v) document.documentElement.style.setProperty(k, v);
   }});
+  applyBodyColor();
 }}
 applyUserColors();
 const savedListMargin = localStorage.getItem("md-preview-list-margin");
@@ -697,21 +805,29 @@ const savedMinimapWidth = localStorage.getItem("md-preview-minimap-width");
 if (savedMinimapWidth) document.documentElement.style.setProperty("--minimap-width", savedMinimapWidth + "px");
 const savedTocWidth = localStorage.getItem("md-preview-toc-width");
 if (savedTocWidth) document.documentElement.style.setProperty("--toc-width", savedTocWidth + "px");
+const savedTocSplit = parseFloat(localStorage.getItem("md-preview-toc-split-pct"));
+if (savedTocSplit >= 10 && savedTocSplit <= 90) {{
+  document.documentElement.style.setProperty("--toc-split", savedTocSplit + "%");
+}}
 </script>
 <div class="minimap" id="minimap">
   <div class="minimap-content" id="minimapContent"></div>
   <div class="minimap-viewport" id="minimapViewport"></div>
 </div>
 <div class="minimap-resize" id="minimapResize" title="Drag to resize minimap"></div>
-<button class="toc-toggle" id="tocToggle" title="Toggle sidebar (Ctrl+\\)">&#9776;</button>
 <nav class="toc" id="toc">
-  <div class="toc-tabs" id="tocTabs">
-    <button class="toc-tab active" id="tabOutline">Outline</button>
-    <button class="toc-tab" id="tabFiles">Files</button>
+  <div class="toc-modes" id="tocModes">
+    <button class="toc-mode-btn" id="modeFiles" data-mode="files">Files</button>
+    <button class="toc-mode-btn" id="modeOutline" data-mode="outline">Outline</button>
+    <button class="toc-mode-btn" id="modeBoth" data-mode="both" title="Files + Outline">Both</button>
   </div>
-  <div class="toc-pane" id="paneOutline"></div>
-  <div class="toc-pane" id="paneFiles" style="display:none"></div>
+  <div class="toc-panes" id="tocPanes">
+    <div class="toc-pane" id="paneFiles" style="display:none"></div>
+    <div class="toc-split-resize" id="tocSplitResize" title="Drag to resize"></div>
+    <div class="toc-pane" id="paneOutline"></div>
+  </div>
 </nav>
+<button class="toc-toggle" id="tocToggle" title="Toggle sidebar (Ctrl+\\)">&#9776;</button>
 <div class="toc-resize" id="tocResize" title="Drag to resize sidebar"></div>
 <button class="edit-btn" id="editBtn" title="Edit (Ctrl+E)">&#9998;</button>
 <button class="settings-btn" id="settingsBtn" title="Settings">&#9881;</button>
@@ -747,6 +863,7 @@ if (savedTocWidth) document.documentElement.style.setProperty("--toc-width", sav
   <div class="settings-section">
     <div class="settings-section-title">Text Color</div>
     <div class="settings-color-row"><label>Body</label><select class="heading-color-select" id="fgColor"></select></div>
+    <div class="settings-slider-row"><label>Brightness</label><input type="range" id="fgBrightness" min="40" max="100" value="100" step="5"><span class="slider-value" id="fgBrightnessValue">100%</span></div>
     <div class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">Heading Colors <button class="settings-btn-apply" id="shuffleHeadingBtn" style="margin:0;padding:2px 10px;font-size:11px;">Shuffle</button></div>
     <div class="settings-color-row"><label>H1</label><select class="heading-color-select" id="h1Color"></select></div>
     <div class="settings-color-row"><label>H2</label><select class="heading-color-select" id="h2Color"></select></div>
@@ -1043,6 +1160,7 @@ __processContent();
         sel.value = saved;
         document.documentElement.style.setProperty(h.cssVar, saved);
       }}
+      sel.style.color = sel.value;  // 設定中の色をセレクト自体の文字色に反映
     }});
   }}
 
@@ -1051,6 +1169,7 @@ __processContent();
       const val = e.target.value;
       document.documentElement.style.setProperty(h.cssVar, val);
       localStorage.setItem("md-preview-" + h.cssVar, val);
+      e.target.style.color = val;  // セレクトの表示色も追従
     }});
   }});
 
@@ -1081,13 +1200,29 @@ __processContent();
       opt.selected = true;
       fgSelect.appendChild(opt);
     }}
+    fgSelect.style.color = fgSelect.value;  // 設定中の色をセレクト自体の文字色に反映
   }}
   fgSelect.addEventListener("change", (e) => {{
-    const val = e.target.value;
-    document.documentElement.style.setProperty("--fg", val);
-    localStorage.setItem("md-preview--fg", val);
+    localStorage.setItem("md-preview--fg", e.target.value);  // 選択色（base）を保存
+    applyBodyColor();                                        // 明度を反映して適用
+    e.target.style.color = e.target.value;                   // セレクトの表示色も追従
+    if (window._rebuildMinimap) window._rebuildMinimap();
   }});
   buildFgSelect();
+
+  // 本文色の明度（まぶしさ調整）スライダー
+  const fgBrightness = document.getElementById("fgBrightness");
+  const fgBrightnessValue = document.getElementById("fgBrightnessValue");
+  const savedFgB = parseInt(localStorage.getItem("md-preview-fg-brightness") || "100", 10);
+  fgBrightness.value = savedFgB;
+  fgBrightnessValue.textContent = savedFgB + "%";
+  fgBrightness.addEventListener("input", (e) => {{
+    const v = parseInt(e.target.value, 10);
+    fgBrightnessValue.textContent = v + "%";
+    localStorage.setItem("md-preview-fg-brightness", v);
+    applyBodyColor();
+    if (window._rebuildMinimap) window._rebuildMinimap();
+  }});
 
   document.getElementById("shuffleHeadingBtn").addEventListener("click", () => {{
     const palette = getPalette();
@@ -1182,9 +1317,20 @@ __processContent();
 
   // 左サイドバー: 左端=0 なので clientX がそのまま幅
   startDrag(document.getElementById("tocResize"), (x) => {{
-    const w = clamp(Math.round(x), 150, 600);
+    const w = clamp(Math.round(x), 150, 900);
     document.documentElement.style.setProperty("--toc-width", w + "px");
     localStorage.setItem("md-preview-toc-width", w);
+  }});
+
+  // 両方表示（分割）時の Files/Outline 境界: Files側の幅を「割合(%)」で保持する。
+  // ％にすることでサイドバー幅やウインドウサイズの変化に動的に追従する。
+  startDrag(document.getElementById("tocSplitResize"), (x) => {{
+    const panes = document.getElementById("tocPanes");
+    const r = panes.getBoundingClientRect();
+    if (r.width <= 0) return;
+    const pct = clamp(((x - r.left) / r.width) * 100, 15, 85);
+    document.documentElement.style.setProperty("--toc-split", pct.toFixed(2) + "%");
+    localStorage.setItem("md-preview-toc-split-pct", pct.toFixed(2));
   }});
 
   // ミニマップ: 右端固定なので 幅 = 画面幅 - clientX。設定スライダーとも同期。
@@ -1336,11 +1482,14 @@ __processContent();
 (function() {{
   const toc = document.getElementById("toc");
   const tocBtn = document.getElementById("tocToggle");
-  const tabs = document.getElementById("tocTabs");
-  const tabOutline = document.getElementById("tabOutline");
-  const tabFiles = document.getElementById("tabFiles");
+  const modeBar = document.getElementById("tocModes");
+  const modeFiles = document.getElementById("modeFiles");
+  const modeOutline = document.getElementById("modeOutline");
+  const modeBoth = document.getElementById("modeBoth");
   const paneOutline = document.getElementById("paneOutline");
   const paneFiles = document.getElementById("paneFiles");
+  const tocPanes = document.getElementById("tocPanes");
+  const splitResize = document.getElementById("tocSplitResize");
   const mdContent = document.getElementById("mdContent");
   const filePathEl = document.getElementById("filePathEl");
 
@@ -1388,18 +1537,81 @@ __processContent();
   }}
   window.addEventListener("scroll", updateActive, {{ passive: true }});
 
-  // ---- Tabs ----
-  // 保存値は一度だけ読む（finalizeが二度走るため、表示中の上書きで保存値が壊れるのを防ぐ）
-  const savedTab = localStorage.getItem("md-preview-toc-tab") || "outline";
-  function setTab(name) {{
-    const isFiles = name === "files";
-    paneFiles.style.display = isFiles ? "" : "none";
-    paneOutline.style.display = isFiles ? "none" : "";
-    tabFiles.classList.toggle("active", isFiles);
-    tabOutline.classList.toggle("active", !isFiles);
+  // ---- 表示モード（files / outline / both） ----
+  const savedMode = localStorage.getItem("md-preview-toc-mode");
+  let tocMode = (savedMode === "files" || savedMode === "outline" || savedMode === "both")
+    ? savedMode
+    : (savedMode === "split" ? "both" : "both");  // 旧値からの移行（tabs/split→both）
+  // モードを適用。内容が無いモードは選べないが、セレクタ自体は常時表示して必ず復帰可能にする。
+  function applyTocMode() {{
+    const hasOutline = links.length > 0;
+    const hasFiles = paneFiles.childElementCount > 0;
+    modeFiles.disabled = !hasFiles;
+    modeOutline.disabled = !hasOutline;
+    modeBoth.disabled = !(hasFiles && hasOutline);
+    // 選択モードは保持しつつ、表示可能な範囲へ補正（内容が戻れば選択が復帰する）
+    let m = tocMode;
+    if (m === "both" && !(hasFiles && hasOutline)) m = hasFiles ? "files" : "outline";
+    if (m === "files" && !hasFiles) m = hasOutline ? "outline" : "files";
+    if (m === "outline" && !hasOutline) m = hasFiles ? "files" : "outline";
+    const split = (m === "both");
+    toc.classList.toggle("split", split);
+    paneFiles.style.display = (split || m === "files") ? "" : "none";
+    paneOutline.style.display = (split || m === "outline") ? "" : "none";
+    modeFiles.classList.toggle("active", m === "files");
+    modeOutline.classList.toggle("active", m === "outline");
+    modeBoth.classList.toggle("active", m === "both");
+    modeBar.style.display = (hasOutline || hasFiles) ? "" : "none";
   }}
-  tabOutline.addEventListener("click", () => {{ setTab("outline"); localStorage.setItem("md-preview-toc-tab", "outline"); }});
-  tabFiles.addEventListener("click", () => {{ setTab("files"); localStorage.setItem("md-preview-toc-tab", "files"); }});
+  [modeFiles, modeOutline, modeBoth].forEach(btn => {{
+    btn.addEventListener("click", () => {{
+      if (btn.disabled) return;
+      tocMode = btn.dataset.mode;
+      localStorage.setItem("md-preview-toc-mode", tocMode);
+      applyTocMode();
+      if (window._rebuildMinimap) window._rebuildMinimap();
+    }});
+  }});
+
+  // ---- 見切れた項目はホバーで即時に全文表示（Files/Outline 共通） ----
+  const tip = document.createElement("div");
+  tip.id = "treeTip";
+  document.body.appendChild(tip);
+  function hideTip() {{ tip.classList.remove("show"); }}
+  // measureEl: 見切れ判定に使う要素 / posEl: 位置・体裁を合わせる要素
+  function showTip(measureEl, posEl, text) {{
+    if (!measureEl || !posEl) {{ hideTip(); return; }}
+    if (measureEl.scrollWidth <= measureEl.clientWidth + 1) {{ hideTip(); return; }}  // 見切れていなければ出さない
+    const r = posEl.getBoundingClientRect();
+    const cs = getComputedStyle(posEl);
+    // テキスト開始位置（左パディング＋ボーダー分）に正確に合わせ、高さは行に一致させて中央寄せ
+    const padL = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.borderLeftWidth) || 0);
+    tip.textContent = text;
+    tip.style.left = (r.left + padL) + "px";
+    tip.style.top = r.top + "px";
+    tip.style.height = r.height + "px";
+    tip.style.fontSize = cs.fontSize;
+    tip.style.fontWeight = cs.fontWeight;
+    tip.style.color = cs.color;
+    tip.classList.add("show");
+  }}
+  toc.addEventListener("mouseover", (e) => {{
+    const row = e.target.closest(".tree-row");
+    if (row) {{
+      const nm = row.querySelector(".tree-name");
+      if (!nm) {{ hideTip(); return; }}
+      // .tree-name が flex item として幅を持てば nm で判定、持てない(幅0=インライン)なら行で判定
+      const measure = (nm.clientWidth > 0) ? nm : row;
+      showTip(measure, nm, nm.textContent);
+      return;
+    }}
+    const link = e.target.closest("#paneOutline a");
+    if (link) {{ showTip(link, link, link.textContent); return; }}
+    hideTip();
+  }});
+  toc.addEventListener("mouseleave", hideTip);
+  toc.addEventListener("scroll", hideTip, true);  // スクロールで位置がずれるため隠す
+  document.addEventListener("mousedown", hideTip);
 
   // ---- Open / close ----
   function setOpen(open) {{
@@ -1415,6 +1627,13 @@ __processContent();
       setOpen(!toc.classList.contains("open"));
     }}
   }});
+  // ハンバーガー近接表示: 開いている時、サイドバー右端から一定範囲内（+56px）に
+  // カーソルがあればボタンを出す。サイドバー外のボタンへマウスを移動しても消えない。
+  document.addEventListener("mousemove", (e) => {{
+    if (!document.body.classList.contains("toc-open")) return;
+    const rightEdge = toc.getBoundingClientRect().right;
+    toc.classList.toggle("toggle-near", e.clientX <= rightEdge + 56);
+  }}, {{ passive: true }});
 
   // ---- Seamless file load (右ペインのみ差し替え。ツリー状態は維持) ----
   function setActiveFile(abs) {{
@@ -1466,14 +1685,20 @@ __processContent();
   }});
 
   // ---- Files tree ----
-  const INDENT = 20, BASE = 8;
+  // インデントとガイド線はネストした子ulのCSS（.tree-children）で表現する。
+  const FILE_SCROLL_THRESHOLD = 15; // 直下ファイルがこれを超えたらスクロール枠にまとめる
   // ファイル/フォルダ識別アイコン（Octiconsベースの線画、currentColor追従）
   function treeIcon(kind) {{
     const span = document.createElement("span");
     span.className = "tree-icon";
-    span.innerHTML = kind === "folder"
-      ? '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>'
-      : '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688a.252.252 0 0 0-.011-.013l-2.914-2.914a.272.272 0 0 0-.013-.011Z"/></svg>';
+    if (kind === "folder") {{
+      // 開いた/閉じたフォルダの両SVGを入れ、.collapsedクラスでCSSが出し分ける
+      span.innerHTML =
+        '<svg class="icon-open" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M.513 1.513A1.75 1.75 0 0 1 1.75 1h3.5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 0 0 .2.1H13a1 1 0 0 1 1 1v.5H2.75a.75.75 0 0 0 0 1.5h11.978a1 1 0 0 1 .994 1.117L15 13.25A1.75 1.75 0 0 1 13.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75c0-.464.184-.91.513-1.237Z"/></svg>'
+        + '<svg class="icon-closed" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>';
+    }} else {{
+      span.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688a.252.252 0 0 0-.011-.013l-2.914-2.914a.272.272 0 0 0-.013-.011Z"/></svg>';
+    }}
     return span;
   }}
   function buildTree(files) {{
@@ -1509,56 +1734,55 @@ __processContent();
       if (!openDirs[full]) li.classList.add("collapsed");
       const row = document.createElement("div");
       row.className = "tree-row";
-      row.style.paddingLeft = (BASE + depth * INDENT) + "px";
-      const caret = document.createElement("span");
-      caret.className = "tree-caret";
-      caret.textContent = "\\u25be";
       const nm = document.createElement("span");
       nm.className = "tree-name";
       nm.textContent = name;
-      row.appendChild(caret);
       row.appendChild(treeIcon("folder"));
       row.appendChild(nm);
       row.addEventListener("click", () => li.classList.toggle("collapsed"));
       li.appendChild(row);
       const childUl = document.createElement("ul");
+      childUl.className = "tree-children";
       renderInto(childUl, node.dirs[name], full, depth + 1, openDirs);
       li.appendChild(childUl);
       ul.appendChild(li);
     }});
-    node.files.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {{
+    const sortedFiles = node.files.sort((a, b) => a.name.localeCompare(b.name));
+    // 直下ファイルが多い場合は固定高スクロール枠にまとめる
+    let fileContainer = ul;
+    if (sortedFiles.length > FILE_SCROLL_THRESHOLD) {{
+      const boxLi = document.createElement("li");
+      const box = document.createElement("div");
+      box.className = "tree-filebox";
+      const innerUl = document.createElement("ul");
+      innerUl.className = "toc-tree";
+      box.appendChild(innerUl);
+      boxLi.appendChild(box);
+      ul.appendChild(boxLi);
+      fileContainer = innerUl;
+    }}
+    sortedFiles.forEach(f => {{
       const li = document.createElement("li");
       const a = document.createElement("a");
       a.className = "tree-row tree-file";
       a.href = "/view?path=" + encodeURIComponent(f.abs);
       a.dataset.abs = f.abs;
-      a.style.paddingLeft = (BASE + depth * INDENT) + "px";
-      const caret = document.createElement("span");
-      caret.className = "tree-caret";  // ファイルはキャレット無し（位置揃えのスペーサー）
       const nm = document.createElement("span");
       nm.className = "tree-name";
       nm.textContent = f.name;
-      nm.title = f.name;
-      a.appendChild(caret);
       a.appendChild(treeIcon("file"));
       a.appendChild(nm);
       if (f.abs === window.__md.path) a.classList.add("active");
       a.addEventListener("click", (e) => {{ e.preventDefault(); loadFile(f.abs, {{ push: true }}); }});
       li.appendChild(a);
-      ul.appendChild(li);
+      fileContainer.appendChild(li);
     }});
   }}
 
   function finalize() {{
     const hasOutline = links.length > 0;
     const hasFiles = paneFiles.childElementCount > 0;
-    tabOutline.style.display = hasOutline ? "" : "none";
-    tabFiles.style.display = hasFiles ? "" : "none";
-    tabs.style.display = (hasOutline && hasFiles) ? "" : "none";
-    let tab = savedTab;
-    if (tab === "outline" && !hasOutline) tab = "files";
-    if (tab === "files" && !hasFiles) tab = "outline";
-    setTab(tab);
+    applyTocMode();
     tocBtn.style.display = (hasOutline || hasFiles) ? "" : "none";
     const savedOpen = localStorage.getItem("md-preview-toc-open") === "1";
     setOpen(savedOpen && (hasOutline || hasFiles));
