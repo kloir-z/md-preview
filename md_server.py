@@ -1771,42 +1771,33 @@ def _scan_dir_markdown(base: Path) -> dict:
 
 
 def list_repo_markdown(filepath: str) -> dict:
-    """filepathの周辺にある.mdファイル一覧を返す。
+    """filepathの周辺にある.mdファイル一覧を返す（Filesサイドバー用）。
 
-    優先: 属するgitリポジトリ内の追跡済み.md（`git ls-files`）。
-    フォールバック: gitリポジトリでない/gitが無い場合は、開いたファイルの
-    フォルダ以下をファイルシステム走査して.mdを列挙する（git管理外でも
-    Filesサイドバーが使えるように）。
-    どちらも不可なら {"root": None, "files": []}。
+    走査ルートの決め方:
+      - gitリポジトリ内 → リポジトリのトップ階層（`git rev-parse --show-toplevel`）
+      - git管理外/gitが無い → 開いたファイルのフォルダ
+    決めたルート以下をファイルシステム走査して.mdを列挙する。追跡/未追跡や
+    .gitignoreの有無に関係なく全`.md`が対象（gitはルート決定にのみ使用）。
+    ただし.git/node_modules等は除外、件数上限あり（_scan_dir_markdown）。
+    baseが存在しない場合のみ {"root": None, "files": []}。
     """
     empty = {"root": None, "files": []}
     base = Path(filepath).parent
     if not base.exists():
         return empty
-    # 1) git追跡ファイル（優先）
+    # 走査ルート: gitリポジトリならトップ階層、無ければ開いたファイルのフォルダ
+    scan_root = base
     try:
         top = subprocess.run(
             ["git", "-C", str(base), "rev-parse", "--show-toplevel"],
             capture_output=True, text=True, encoding="utf-8", timeout=5,
         )
         if top.returncode == 0 and top.stdout.strip():
-            root = top.stdout.strip()
-            listed = subprocess.run(
-                ["git", "-C", root, "ls-files"],
-                capture_output=True, text=True, encoding="utf-8", timeout=5,
-            )
-            if listed.returncode == 0:
-                rels = sorted(
-                    line for line in listed.stdout.splitlines()
-                    if line.lower().endswith(".md")
-                )
-                files = [{"rel": rel, "abs": f"{root}/{rel}"} for rel in rels]
-                return {"root": root, "files": files}
+            scan_root = Path(top.stdout.strip())
     except (OSError, subprocess.SubprocessError):
         pass
-    # 2) フォールバック: ファイルシステム走査（git管理外）
     try:
-        return _scan_dir_markdown(base)
+        return _scan_dir_markdown(scan_root)
     except OSError:
         return empty
 
