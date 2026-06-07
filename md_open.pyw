@@ -9,6 +9,7 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).parent))
 from config import DEFAULT_PORT as PORT
@@ -43,7 +44,9 @@ def main():
                 break
             time.sleep(0.1)
 
-    webbrowser.open(f"http://localhost:{PORT}/view?path={filepath}")
+    # パスにスペースやバックスラッシュ・日本語が含まれるとブラウザがURLを誤解釈して
+    # 開けないため、必ずURLエンコードする（git管理外のDocuments配下等で頻発）。
+    webbrowser.open(f"http://localhost:{PORT}/view?path={quote(filepath, safe='')}")
 
 
 if __name__ == "__main__":

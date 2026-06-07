@@ -19,7 +19,7 @@ import threading
 import webbrowser
 from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse, unquote
+from urllib.parse import parse_qs, urlparse, unquote, quote
 
 import mimetypes
 import markdown
@@ -438,13 +438,16 @@ HTML_TEMPLATE = """\
     background: rgba(255,255,255,0.04);
   }}
   .tree-caret {{
-    flex: 0 0 12px;
-    width: 12px;
-    font-size: 10px;
+    flex: 0 0 16px;
+    width: 16px;
+    font-size: 13px;
+    line-height: 1;
     text-align: center;
-    opacity: 0.7;
-    transition: transform 0.1s;
+    opacity: 0.85;
+    transition: transform 0.12s;
   }}
+  /* フォルダの開閉キャレットは見出し色で強調し、開閉が一目で分かるようにする */
+  .tree-folder > .tree-row .tree-caret {{ color: var(--heading); opacity: 1; }}
   .tree-folder.collapsed > ul {{ display: none; }}
   .tree-folder.collapsed > .tree-row .tree-caret {{ transform: rotate(-90deg); }}
   .tree-name {{ overflow: hidden; text-overflow: ellipsis; }}
@@ -1396,7 +1399,7 @@ __processContent();
   }});
 
   // ---- Files tree ----
-  const INDENT = 14, BASE = 8;
+  const INDENT = 20, BASE = 8;
   // ファイル/フォルダ識別アイコン（Octiconsベースの線画、currentColor追従）
   function treeIcon(kind) {{
     const span = document.createElement("span");
@@ -1866,7 +1869,9 @@ def main():
 
     if args.file:
         filepath = str(Path(args.file).resolve())
-        url = f"http://localhost:{args.port}/view?path={filepath}"
+        # パスにスペースやバックスラッシュ・日本語が含まれるとブラウザがURLを誤解釈して
+        # 開けないため、必ずURLエンコードする（git管理外のDocuments配下等で頻発）。
+        url = f"http://localhost:{args.port}/view?path={quote(filepath, safe='')}"
         print(f"Opening: {url}")
         webbrowser.open(url)
 
