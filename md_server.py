@@ -34,7 +34,7 @@ HTML_TEMPLATE = """\
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
-<link rel="stylesheet" href="/static/monokai.min.css">
+<link rel="stylesheet" id="hljsTheme" href="/static/hljs/github-dark.min.css">
 <script src="/static/highlight.min.js"></script>
 <script src="/static/mermaid.min.js"></script>
 <style>
@@ -87,6 +87,10 @@ HTML_TEMPLATE = """\
     overflow-x: auto;
   }}
   pre code {{ background: none; padding: 0; font-size: 14px; }}
+  /* hljsテーマCSSの .hljs 背景/余白を打ち消し、コードブロック背景はアプリテーマの
+     --code-bg に統一する（テーマ切替で背景がばらつかないようにするため高詳細度で指定）。
+     hljsテーマはトークン色のみを担当する。 */
+  #mdContent pre code.hljs {{ background: transparent; padding: 0; }}
   blockquote {{
     border-left: 4px solid var(--blockquote-border);
     margin: 0;
@@ -444,6 +448,12 @@ HTML_TEMPLATE = """\
   .tree-folder.collapsed > ul {{ display: none; }}
   .tree-folder.collapsed > .tree-row .tree-caret {{ transform: rotate(-90deg); }}
   .tree-name {{ overflow: hidden; text-overflow: ellipsis; }}
+  /* ファイル/フォルダ識別アイコン（SVG, currentColor追従）。フォルダは見出し色で強調。 */
+  .tree-icon {{ flex: 0 0 16px; display: inline-flex; align-items: center; justify-content: center; }}
+  .tree-icon svg {{ display: block; }}
+  .tree-folder > .tree-row .tree-icon {{ color: var(--heading); opacity: 0.9; }}
+  .tree-file .tree-icon {{ color: var(--fg); opacity: 0.55; }}
+  .tree-file.active .tree-icon {{ color: var(--link); opacity: 1; }}
   .toc-toggle {{
     position: fixed;
     top: 10px;
@@ -614,6 +624,25 @@ const THEMES = {{
   }},
 }};
 
+// コードブロックのシンタックスハイライト用テーマ（highlight.js）。
+// /static/hljs/<key>.min.css を id="hljsTheme" のlinkに差し替えて切替える。
+// アプリ（ページ）テーマとは独立。背景は --code-bg に統一しトークン色のみ反映。
+const CODE_THEMES = [
+  {{ key: "github-dark", name: "GitHub Dark" }},
+  {{ key: "atom-one-dark", name: "Atom One Dark" }},
+  {{ key: "tokyo-night-dark", name: "Tokyo Night Dark" }},
+  {{ key: "monokai", name: "Monokai" }},
+  {{ key: "dracula", name: "Dracula" }},
+  {{ key: "nord", name: "Nord" }},
+  {{ key: "vs2015", name: "VS 2015" }},
+  {{ key: "a11y-dark", name: "a11y Dark" }},
+];
+const DEFAULT_CODE_THEME = "github-dark";
+function applyCodeTheme(key) {{
+  const link = document.getElementById("hljsTheme");
+  if (link) link.href = "/static/hljs/" + key + ".min.css";
+}}
+
 function applyTheme(keyOrTheme) {{
   const theme = (typeof keyOrTheme === "string") ? THEMES[keyOrTheme] : keyOrTheme;
   if (!theme) return;
@@ -630,6 +659,8 @@ if (savedTheme === "custom") {{
 }} else {{
   applyTheme(savedTheme);
 }}
+const savedCodeTheme = localStorage.getItem("md-preview-code-theme") || DEFAULT_CODE_THEME;
+applyCodeTheme(savedCodeTheme);
 ["--h1-color","--h2-color","--h3-color","--h4-color"].forEach(k => {{
   const v = localStorage.getItem("md-preview-" + k);
   if (v) document.documentElement.style.setProperty(k, v);
@@ -682,6 +713,10 @@ if (savedTocWidth) document.documentElement.style.setProperty("--toc-width", sav
   <div class="settings-section">
     <div class="settings-section-title">Theme</div>
     <select class="theme-select" id="themeSelect"></select>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-title">Code Theme</div>
+    <select class="theme-select" id="codeThemeSelect"></select>
   </div>
   <div class="settings-section">
     <div class="settings-section-title">Import Colors</div>
@@ -803,6 +838,26 @@ __processContent();
   }});
 
   renderThemeSelect();
+
+  // --- Code theme (syntax highlighting) ---
+  const codeThemeSelect = document.getElementById("codeThemeSelect");
+  function renderCodeThemeSelect() {{
+    codeThemeSelect.innerHTML = "";
+    const cur = localStorage.getItem("md-preview-code-theme") || DEFAULT_CODE_THEME;
+    CODE_THEMES.forEach(t => {{
+      const opt = document.createElement("option");
+      opt.value = t.key;
+      opt.textContent = t.name;
+      if (t.key === cur) opt.selected = true;
+      codeThemeSelect.appendChild(opt);
+    }});
+  }}
+  codeThemeSelect.addEventListener("change", () => {{
+    const key = codeThemeSelect.value;
+    applyCodeTheme(key);
+    localStorage.setItem("md-preview-code-theme", key);
+  }});
+  renderCodeThemeSelect();
 
   // --- Color import ---
   const colorImportArea = document.getElementById("colorImportArea");
@@ -1342,6 +1397,15 @@ __processContent();
 
   // ---- Files tree ----
   const INDENT = 14, BASE = 8;
+  // ファイル/フォルダ識別アイコン（Octiconsベースの線画、currentColor追従）
+  function treeIcon(kind) {{
+    const span = document.createElement("span");
+    span.className = "tree-icon";
+    span.innerHTML = kind === "folder"
+      ? '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>'
+      : '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688a.252.252 0 0 0-.011-.013l-2.914-2.914a.272.272 0 0 0-.013-.011Z"/></svg>';
+    return span;
+  }}
   function buildTree(files) {{
     const root = {{ dirs: {{}}, files: [] }};
     files.forEach(f => {{
@@ -1383,6 +1447,7 @@ __processContent();
       nm.className = "tree-name";
       nm.textContent = name;
       row.appendChild(caret);
+      row.appendChild(treeIcon("folder"));
       row.appendChild(nm);
       row.addEventListener("click", () => li.classList.toggle("collapsed"));
       li.appendChild(row);
@@ -1405,6 +1470,7 @@ __processContent();
       nm.textContent = f.name;
       nm.title = f.name;
       a.appendChild(caret);
+      a.appendChild(treeIcon("file"));
       a.appendChild(nm);
       if (f.abs === window.__md.path) a.classList.add("active");
       a.addEventListener("click", (e) => {{ e.preventDefault(); loadFile(f.abs, {{ push: true }}); }});
