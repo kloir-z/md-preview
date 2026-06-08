@@ -189,11 +189,9 @@ def _scan_dir_markdown(base: Path) -> dict:
     root = base.resolve()
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
-        # 除外ディレクトリと隠しディレクトリは降りない（in-placeでprune）
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in _SCAN_EXCLUDE_DIRS and not d.startswith(".")
-        ]
+        # 除外ディレクトリは降りない（in-placeでprune）。隠しディレクトリ（.claude等）は
+        # 一律除外せず、ノイズ系のみ_SCAN_EXCLUDE_DIRSで明示除外する。
+        dirnames[:] = [d for d in dirnames if d not in _SCAN_EXCLUDE_DIRS]
         for fn in filenames:
             if fn.lower().endswith(".md"):
                 p = Path(dirpath) / fn
