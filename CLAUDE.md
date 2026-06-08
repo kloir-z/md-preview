@@ -9,19 +9,19 @@
 
 ## Project overview
 
-Markdown Preview Server -- ローカルのMarkdownファイルをブラウザでプレビューするPythonサーバー。ファイル変更時にポーリングで自動リロード。複数テーマ対応 + カスタムカラーインポート。ポート3030で動作。
+Markdown Preview Server -- ローカルのMarkdownファイルをブラウザでプレビューするPythonサーバー。ファイル変更時にポーリングで自動リロード。ダーク/ライト/目に優しい系の複数テーマ対応。ポート3030で動作。
 
 ## Architecture
 
 - `config.py` -- 共通設定（`DEFAULT_PORT`等）。`md_server.py`と`md_open.pyw`から参照。
 - `md_server.py` -- HTTPサーバー本体。`HTML_TEMPLATE`はHTML骨格のみで、CSSは`static/app.css`、JSは`static/app.early.js`（head同期実行・テーマ/色の早期適用）と`static/app.js`（body末尾・サイドバー/ミニマップ/設定/編集）に外出し。per-requestデータ（path/hash）は`#md-data`(JSON)で注入し、`HTML_TEMPLATE`は`.format()`ではなく`__MD_*__`マーカーの`.replace()`で展開する（波括弧の二重化が不要）。`markdown`ライブラリでHTML変換、highlight.jsでコードハイライト。MD5ハッシュによるポーリングで変更検知・自動リロード。
-  - **テーマ**: 8種のダーク系プリセット + .itermcolorsカラーインポートによるカスタムテーマ。CSS変数ベース。
+  - **テーマ**: ダーク/ライト/目に優しい系の計16テーマ（CSS変数ベース）。`THEMES`の各エントリは`dark`(明暗)・`code`(対応hljsキー)メタを持つ。テーマ切替でコードハイライトと mermaid図(`__rerenderMermaid`で元ソースから再描画)も連動。UIの重ね色（ホバー/スクロールバー等）は`--overlay-*`変数で、ライトは黒系・ダークは白系に切替。
   - **サイドバー**: 左側にOutline（見出し目次・スクロール追従ハイライト）とFiles（`.md`フォルダツリー。走査ルートはgitリポジトリ内ならリポジトリのトップ階層、git管理外なら開いたファイルのフォルダ。そのルート以下をファイルシステム走査し、追跡/未追跡・`.gitignore`問わず全`.md`を列挙。`.git`/`node_modules`等は除外）のタブ。タブ切替モードと、左Files/右Outlineを横並び個別スクロールする分割モードがあり、タブ行右端のトグル（◫）で切替・localStorage記憶（`md-preview-toc-mode`、両方存在時のみ有効）。ファイル/フォルダはSVGアイコンで識別（フォルダは見出し色で強調、ファイルは`FILE_EXTRA`分だけ右へ寄せて中に入って見えるように）。直下ファイルが`FILE_SCROLL_THRESHOLD`(15)件超のフォルダは、ファイル群を固定高スクロール枠（`.tree-filebox`）にまとめる。Filesのファイルクリックで右ペイン（`#mdContent`）を`/render`でAjax差し替え（フルリロードせず、mermaid/hljsを再利用）。URL（`history.pushState`）・タイトル・アウトライン・ミニマップ・選択ハイライトを追従更新。ツリーの展開状態は維持。開いているファイルを含むフォルダは折り畳み時に行をハイライト（祖先フォルダに`has-active`付与）。右端のドラッグハンドルで幅変更（`--toc-width`）。スクロールバーは全体的にスリムな背景溶け込み型（カスタム`::-webkit-scrollbar`）。
   - **ミニマップ**: 画面右端にVSCodeスタイルのミニマップ（CSS Transform方式でDOMクローンを縮小表示）。クリック/ドラッグでスクロール。左端のドラッグハンドルで幅変更（`--minimap-width`、設定スライダーと同期）。
-  - **設定モーダル**: テーマ選択（ドロップダウン）、コードテーマ選択（シンタックスハイライト、`hljs/`の8種から切替。アプリテーマとは独立。背景は`--code-bg`に統一しトークン色のみ反映）、カラーインポート（.itermcolors XML貼り付け）、本文色（`--fg`）・見出し色（H1-H4）カスタマイズ（パレットから選択、見出しはシャッフル可。`--fg`はテーマ切替後も`applyUserColors`で維持）、レイアウト設定（箇条書きマージン・最大横幅・ミニマップ幅スライダー）。
+  - **設定モーダル**: テーマ選択（ドロップダウン）、コードテーマ選択（シンタックスハイライト、`hljs/`の11種から切替。背景は`--code-bg`に統一しトークン色のみ反映。アプリテーマ切替時は対応する`code`へ自動追従するが、その後ユーザーが手動で別テーマを選ぶのも可）、本文色（`--fg`）・見出し色（H1-H4）カスタマイズ（現在テーマのパレットから選択、見出しはシャッフル可。`--fg`はテーマ切替後も`applyUserColors`で維持）、レイアウト設定（箇条書きマージン・最大横幅・ミニマップ幅スライダー）。
   - **永続化**: すべての設定（テーマ・色・レイアウト・サイドバー幅/開閉/タブ・ミニマップ幅）をlocalStorageに保存、ページロード時に即座に適用。
 - `md_open.pyw` -- Markdownファイルオープナー。サーバーが未起動なら自動起動し、ブラウザで開く。`pythonw`実行のためコンソール画面が出ない。ファイル関連付け・「送る」のターゲットにする（例: `pythonw md_open.pyw "%1"`）。
-- `static/` -- `app.css`（全UIのCSS）、`app.early.js`（head同期実行。THEMES/CODE_THEMES定義とテーマ/コード色/ユーザー色/サイドバー幅の早期適用。FOUC回避のためbodyより前）、`app.js`（body末尾。サイドバー/ミニマップ/設定モーダル/編集の各IIFE）、highlight.min.js、`hljs/`配下にシンタックスハイライト用テーマ8種（GitHub Dark/Atom One Dark/Tokyo Night Dark/Monokai/Dracula/Nord/VS2015/a11y Dark、デフォルトGitHub Dark）、mermaid.min.js（ローカル配置）。`app.css`/`app.early.js`/`app.js`は`?v=<mtime>`付きで配信しキャッシュバスティング（`_asset_version()`）。
+- `static/` -- `app.css`（全UIのCSS）、`app.early.js`（head同期実行。THEMES/CODE_THEMES定義とテーマ/コード色/ユーザー色/サイドバー幅の早期適用。FOUC回避のためbodyより前）、`app.js`（body末尾。サイドバー/ミニマップ/設定モーダル/編集の各IIFE）、highlight.min.js、`hljs/`配下にシンタックスハイライト用テーマ11種（ダーク8: GitHub Dark/Atom One Dark/Tokyo Night Dark/Monokai/Dracula/Nord/VS2015/a11y Dark ＋ ライト3: GitHub Light/Atom One Light/Solarized Light、デフォルトGitHub Dark）、mermaid.min.js（ローカル配置）。`app.css`/`app.early.js`/`app.js`は`?v=<mtime>`付きで配信しキャッシュバスティング（`_asset_version()`）。
 
 ## Endpoints
 

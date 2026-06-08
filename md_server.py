@@ -100,16 +100,10 @@ if (savedTocSplit >= 10 && savedTocSplit <= 90) {
     <select class="theme-select" id="codeThemeSelect"></select>
   </div>
   <div class="settings-section">
-    <div class="settings-section-title">Import Colors</div>
-    <div class="settings-ref-link"><a href="https://iterm2colorschemes.com/" target="_blank" rel="noopener">iTerm2 Color Schemes</a> — .itermcolors plist format</div>
-    <textarea class="settings-textarea" id="colorImportArea" placeholder="Paste .itermcolors XML here..."></textarea>
-    <div class="settings-error" id="colorImportError"></div>
-    <button class="settings-btn-apply" id="colorImportBtn">Apply</button>
-  </div>
-  <div class="settings-section">
     <div class="settings-section-title">Text Color</div>
     <div class="settings-color-row"><label>Body</label><select class="heading-color-select" id="fgColor"></select></div>
     <div class="settings-slider-row"><label>Brightness</label><input type="range" id="fgBrightness" min="40" max="100" value="100" step="5"><span class="slider-value" id="fgBrightnessValue">100%</span></div>
+    <div class="settings-color-row"><label>Code</label><select class="heading-color-select" id="codeColor"></select></div>
     <div class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">Heading Colors <button class="settings-btn-apply" id="shuffleHeadingBtn" style="margin:0;padding:2px 10px;font-size:11px;">Shuffle</button></div>
     <div class="settings-color-row"><label>H1</label><select class="heading-color-select" id="h1Color"></select></div>
     <div class="settings-color-row"><label>H2</label><select class="heading-color-select" id="h2Color"></select></div>
@@ -214,6 +208,30 @@ def _scan_dir_markdown(base: Path) -> dict:
     return {"root": root.as_posix(), "files": files}
 
 
+def scan_root_for(filepath: str) -> Path:
+    """走査ルート（=タブタイトルに使う最上位ディレクトリ）を返す。
+    gitリポジトリ内ならトップ階層（`git rev-parse --show-toplevel`）、
+    git管理外/gitが無ければ開いたファイルのフォルダ。"""
+    base = Path(filepath).parent
+    scan_root = base
+    try:
+        top = subprocess.run(
+            ["git", "-C", str(base), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, encoding="utf-8", timeout=5,
+        )
+        if top.returncode == 0 and top.stdout.strip():
+            scan_root = Path(top.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return scan_root
+
+
+def _title_for(filepath: str) -> str:
+    """タブタイトル: 走査ルート（最上位ディレクトリ）名。取れなければファイル名。"""
+    root = scan_root_for(filepath)
+    return root.name or str(root) or Path(filepath).name
+
+
 def list_repo_markdown(filepath: str) -> dict:
     """filepathの周辺にある.mdファイル一覧を返す（Filesサイドバー用）。
 
@@ -229,19 +247,8 @@ def list_repo_markdown(filepath: str) -> dict:
     base = Path(filepath).parent
     if not base.exists():
         return empty
-    # 走査ルート: gitリポジトリならトップ階層、無ければ開いたファイルのフォルダ
-    scan_root = base
     try:
-        top = subprocess.run(
-            ["git", "-C", str(base), "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, encoding="utf-8", timeout=5,
-        )
-        if top.returncode == 0 and top.stdout.strip():
-            scan_root = Path(top.stdout.strip())
-    except (OSError, subprocess.SubprocessError):
-        pass
-    try:
-        return _scan_dir_markdown(scan_root)
+        return _scan_dir_markdown(scan_root_for(filepath))
     except OSError:
         return empty
 
@@ -258,7 +265,7 @@ class MarkdownHandler(BaseHTTPRequestHandler):
                 return
             filepath = unquote(filepath)
             html_content, content_hash = render_markdown(filepath)
-            title = Path(filepath).name
+            title = _title_for(filepath)
             # per-request データは #md-data(JSON) として注入。CSS/JS を外出ししたので
             # .format() の波括弧二重化は不要になり、マーカーの .replace() で展開する。
             # content は最後に置換し、本文中に偶然マーカーがあっても波及させない。
@@ -339,7 +346,7 @@ class MarkdownHandler(BaseHTTPRequestHandler):
             self.write(json.dumps({
                 "html": html_content,
                 "hash": content_hash,
-                "title": Path(filepath).name,
+                "title": _title_for(filepath),
             }).encode())
             return
 

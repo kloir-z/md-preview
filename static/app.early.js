@@ -1,6 +1,19 @@
+// UI重ね色（ホバー/ハイライト/スクロールバー等）。ダーク=白系/ライト=黒系。
+// 全テーマがこの6キーを必ず持つことで、テーマ切替時に前テーマの残留を防ぐ。
+const _OVL_DARK = {
+  "--overlay-faint": "rgba(255,255,255,0.02)", "--overlay-active": "rgba(255,255,255,0.04)",
+  "--overlay-hover": "rgba(255,255,255,0.06)", "--overlay-soft": "rgba(255,255,255,0.16)",
+  "--overlay-medium": "rgba(255,255,255,0.20)", "--overlay-strong": "rgba(255,255,255,0.30)",
+};
+const _OVL_LIGHT = {
+  "--overlay-faint": "rgba(0,0,0,0.02)", "--overlay-active": "rgba(0,0,0,0.05)",
+  "--overlay-hover": "rgba(0,0,0,0.06)", "--overlay-soft": "rgba(0,0,0,0.18)",
+  "--overlay-medium": "rgba(0,0,0,0.22)", "--overlay-strong": "rgba(0,0,0,0.30)",
+};
+// 各テーマ: name=表示名, dark=明暗(mermaid連動), code=対応hljsキー(コードテーマ連動)。
 const THEMES = {
   monokai: {
-    name: "Monokai",
+    name: "Monokai", dark: true, code: "monokai", ..._OVL_DARK,
     "--bg": "#272822", "--fg": "#d8d8d2", "--border": "#3e3f3a",
     "--code-bg": "#1e1f1c", "--blockquote-fg": "#8f908a",
     "--blockquote-border": "#3e3f3a", "--link": "#66c2b5",
@@ -8,7 +21,7 @@ const THEMES = {
     "--heading": "#d4a76a", "--accent": "#ae9fcc",
   },
   github_dark: {
-    name: "GitHub Dark",
+    name: "GitHub Dark", dark: true, code: "github-dark", ..._OVL_DARK,
     "--bg": "#0d1117", "--fg": "#e6edf3", "--border": "#30363d",
     "--code-bg": "#161b22", "--blockquote-fg": "#8b949e",
     "--blockquote-border": "#30363d", "--link": "#58a6ff",
@@ -16,7 +29,7 @@ const THEMES = {
     "--heading": "#e6edf3", "--accent": "#bc8cff",
   },
   dracula: {
-    name: "Dracula",
+    name: "Dracula", dark: true, code: "dracula", ..._OVL_DARK,
     "--bg": "#282a36", "--fg": "#f8f8f2", "--border": "#44475a",
     "--code-bg": "#21222c", "--blockquote-fg": "#6272a4",
     "--blockquote-border": "#44475a", "--link": "#8be9fd",
@@ -24,7 +37,7 @@ const THEMES = {
     "--heading": "#bd93f9", "--accent": "#ff79c6",
   },
   nord: {
-    name: "Nord",
+    name: "Nord", dark: true, code: "nord", ..._OVL_DARK,
     "--bg": "#2e3440", "--fg": "#d8dee9", "--border": "#3b4252",
     "--code-bg": "#272c36", "--blockquote-fg": "#7b88a1",
     "--blockquote-border": "#3b4252", "--link": "#88c0d0",
@@ -32,7 +45,7 @@ const THEMES = {
     "--heading": "#81a1c1", "--accent": "#b48ead",
   },
   solarized_dark: {
-    name: "Solarized Dark",
+    name: "Solarized Dark", dark: true, code: "github-dark", ..._OVL_DARK,
     "--bg": "#002b36", "--fg": "#839496", "--border": "#073642",
     "--code-bg": "#01313f", "--blockquote-fg": "#657b83",
     "--blockquote-border": "#073642", "--link": "#268bd2",
@@ -40,7 +53,7 @@ const THEMES = {
     "--heading": "#b58900", "--accent": "#2aa198",
   },
   gruvbox_dark: {
-    name: "Gruvbox Dark",
+    name: "Gruvbox Dark", dark: true, code: "github-dark", ..._OVL_DARK,
     "--bg": "#282828", "--fg": "#ebdbb2", "--border": "#3c3836",
     "--code-bg": "#1d2021", "--blockquote-fg": "#a89984",
     "--blockquote-border": "#3c3836", "--link": "#83a598",
@@ -48,7 +61,7 @@ const THEMES = {
     "--heading": "#fabd2f", "--accent": "#d3869b",
   },
   catppuccin_mocha: {
-    name: "Catppuccin Mocha",
+    name: "Catppuccin Mocha", dark: true, code: "atom-one-dark", ..._OVL_DARK,
     "--bg": "#1e1e2e", "--fg": "#cdd6f4", "--border": "#313244",
     "--code-bg": "#181825", "--blockquote-fg": "#a6adc8",
     "--blockquote-border": "#313244", "--link": "#89b4fa",
@@ -56,12 +69,76 @@ const THEMES = {
     "--heading": "#cba6f7", "--accent": "#f5c2e7",
   },
   tokyo_night: {
-    name: "Tokyo Night",
+    name: "Tokyo Night", dark: true, code: "tokyo-night-dark", ..._OVL_DARK,
     "--bg": "#1a1b26", "--fg": "#a9b1d6", "--border": "#292e42",
     "--code-bg": "#16161e", "--blockquote-fg": "#565f89",
     "--blockquote-border": "#292e42", "--link": "#7aa2f7",
     "--file-path": "#565f89", "--table-stripe": "#1f2030",
     "--heading": "#bb9af7", "--accent": "#f7768e",
+  },
+  one_dark: {
+    name: "One Dark", dark: true, code: "atom-one-dark", ..._OVL_DARK,
+    "--bg": "#282c34", "--fg": "#abb2bf", "--border": "#3b4048",
+    "--code-bg": "#21252b", "--blockquote-fg": "#7f848e",
+    "--blockquote-border": "#3b4048", "--link": "#61afef",
+    "--file-path": "#7f848e", "--table-stripe": "#2c313a",
+    "--heading": "#e5c07b", "--accent": "#c678dd",
+  },
+  night_owl: {
+    name: "Night Owl", dark: true, code: "tokyo-night-dark", ..._OVL_DARK,
+    "--bg": "#011627", "--fg": "#d6deeb", "--border": "#1d3b53",
+    "--code-bg": "#01111d", "--blockquote-fg": "#637777",
+    "--blockquote-border": "#1d3b53", "--link": "#82aaff",
+    "--file-path": "#637777", "--table-stripe": "#0b2942",
+    "--heading": "#ecc48d", "--accent": "#c792ea",
+  },
+  rose_pine: {
+    name: "Rosé Pine", dark: true, code: "dracula", ..._OVL_DARK,
+    "--bg": "#191724", "--fg": "#e0def4", "--border": "#26233a",
+    "--code-bg": "#1f1d2e", "--blockquote-fg": "#908caa",
+    "--blockquote-border": "#26233a", "--link": "#9ccfd8",
+    "--file-path": "#908caa", "--table-stripe": "#21202e",
+    "--heading": "#ebbcba", "--accent": "#c4a7e7",
+  },
+  github_light: {
+    name: "GitHub Light", dark: false, code: "github", ..._OVL_LIGHT,
+    "--bg": "#ffffff", "--fg": "#1f2328", "--border": "#d1d9e0",
+    "--code-bg": "#f6f8fa", "--blockquote-fg": "#59636e",
+    "--blockquote-border": "#d1d9e0", "--link": "#0969da",
+    "--file-path": "#59636e", "--table-stripe": "#f6f8fa",
+    "--heading": "#1f2328", "--accent": "#8250df",
+  },
+  solarized_light: {
+    name: "Solarized Light", dark: false, code: "solarized-light", ..._OVL_LIGHT,
+    "--bg": "#fdf6e3", "--fg": "#657b83", "--border": "#eee8d5",
+    "--code-bg": "#eee8d5", "--blockquote-fg": "#93a1a1",
+    "--blockquote-border": "#d3cbb7", "--link": "#268bd2",
+    "--file-path": "#93a1a1", "--table-stripe": "#f5efdc",
+    "--heading": "#b58900", "--accent": "#2aa198",
+  },
+  catppuccin_latte: {
+    name: "Catppuccin Latte", dark: false, code: "atom-one-light", ..._OVL_LIGHT,
+    "--bg": "#eff1f5", "--fg": "#4c4f69", "--border": "#ccd0da",
+    "--code-bg": "#e6e9ef", "--blockquote-fg": "#6c6f85",
+    "--blockquote-border": "#ccd0da", "--link": "#1e66f5",
+    "--file-path": "#6c6f85", "--table-stripe": "#e6e9ef",
+    "--heading": "#7287fd", "--accent": "#8839ef",
+  },
+  gruvbox_light_soft: {
+    name: "Gruvbox Light Soft", dark: false, code: "github", ..._OVL_LIGHT,
+    "--bg": "#f2e5bc", "--fg": "#504945", "--border": "#ddd0a8",
+    "--code-bg": "#ece0b8", "--blockquote-fg": "#7c6f64",
+    "--blockquote-border": "#ddd0a8", "--link": "#076678",
+    "--file-path": "#7c6f64", "--table-stripe": "#ece0b8",
+    "--heading": "#b57614", "--accent": "#8f3f71",
+  },
+  everforest_soft: {
+    name: "Everforest Soft", dark: true, code: "nord", ..._OVL_DARK,
+    "--bg": "#2d353b", "--fg": "#d3c6aa", "--border": "#4f5b58",
+    "--code-bg": "#272e33", "--blockquote-fg": "#9da9a0",
+    "--blockquote-border": "#4f5b58", "--link": "#7fbbb3",
+    "--file-path": "#9da9a0", "--table-stripe": "#343f44",
+    "--heading": "#dbbc7f", "--accent": "#d699b6",
   },
 };
 
@@ -77,6 +154,9 @@ const CODE_THEMES = [
   { key: "nord", name: "Nord" },
   { key: "vs2015", name: "VS 2015" },
   { key: "a11y-dark", name: "a11y Dark" },
+  { key: "github", name: "GitHub Light" },
+  { key: "atom-one-light", name: "Atom One Light" },
+  { key: "solarized-light", name: "Solarized Light" },
 ];
 const DEFAULT_CODE_THEME = "github-dark";
 function applyCodeTheme(key) {
@@ -91,17 +171,27 @@ function applyTheme(keyOrTheme) {
   Object.keys(theme).forEach(k => {
     if (k.startsWith("--")) root.style.setProperty(k, theme[k]);
   });
-  // テーマ本来のfg（明度調整の基準。dim結果が累積しないよう素の値を保持）
+  // テーマ本来のfg/accent（ユーザー色を解除した時に戻す基準。dim/上書きの累積を防ぐ）
   if (theme["--fg"]) root.style.setProperty("--fg-theme", theme["--fg"]);
+  if (theme["--accent"]) root.style.setProperty("--accent-theme", theme["--accent"]);
 }
 
-const savedTheme = localStorage.getItem("md-preview-theme") || "monokai";
-if (savedTheme === "custom") {
-  const ct = localStorage.getItem("md-preview-custom-theme");
-  if (ct) applyTheme(JSON.parse(ct));
-} else {
-  applyTheme(savedTheme);
+// ユーザーのカスタム色はテーマの明暗(dark/light)別に保存する（真逆の明暗への持ち越しで
+// 見えなくなるのを防ぐ）。現在テーマの dark フラグから "dark" / "light" を返す。
+function _userColorMode() {
+  const t = THEMES[localStorage.getItem("md-preview-theme") || "monokai"];
+  return (t && t.dark === false) ? "light" : "dark";
 }
+
+let savedTheme = localStorage.getItem("md-preview-theme") || "monokai";
+if (!THEMES[savedTheme]) {
+  // 旧カラーインポートの "custom" 等、未知のテーマキーは既定へ正規化する。
+  savedTheme = "monokai";
+  localStorage.setItem("md-preview-theme", savedTheme);
+  localStorage.removeItem("md-preview-custom-theme");
+  localStorage.removeItem("md-preview-palette");
+}
+applyTheme(savedTheme);
 const savedCodeTheme = localStorage.getItem("md-preview-code-theme") || DEFAULT_CODE_THEME;
 applyCodeTheme(savedCodeTheme);
 // ユーザーが上書きした色。テーマ切替で上書きされるため、テーマ適用のたびに再適用する。
@@ -122,10 +212,29 @@ function _dim(color, f) {
   const d = c => Math.max(0, Math.min(255, Math.round(c * f)));
   return "rgb(" + d(rgb[0]) + "," + d(rgb[1]) + "," + d(rgb[2]) + ")";
 }
-// 本文色: 選択色（無ければテーマの--fg）を明度(brightness%)で暗くして適用
+// 旧（明暗共通）キーを dark 用へ一度だけ移行する。既存ユーザーのダーク向け設定を保持し、
+// 以降は明暗別キー(md-preview-<key>-dark / -light)で扱う。
+(function _migrateUserColors() {
+  ["--fg","--h1-color","--h2-color","--h3-color","--h4-color"].forEach(k => {
+    const old = localStorage.getItem("md-preview-" + k);
+    if (old != null) {
+      if (localStorage.getItem("md-preview-" + k + "-dark") == null)
+        localStorage.setItem("md-preview-" + k + "-dark", old);
+      localStorage.removeItem("md-preview-" + k);
+    }
+  });
+  const ob = localStorage.getItem("md-preview-fg-brightness");
+  if (ob != null) {
+    if (localStorage.getItem("md-preview-fg-brightness-dark") == null)
+      localStorage.setItem("md-preview-fg-brightness-dark", ob);
+    localStorage.removeItem("md-preview-fg-brightness");
+  }
+})();
+// 本文色: 選択色（無ければテーマの--fg）を明度(brightness%)で暗くして適用。明暗別に保存。
 function applyBodyColor() {
-  const base = localStorage.getItem("md-preview--fg");
-  const b = parseInt(localStorage.getItem("md-preview-fg-brightness") || "100", 10);
+  const mode = _userColorMode();
+  const base = localStorage.getItem("md-preview--fg-" + mode);
+  const b = parseInt(localStorage.getItem("md-preview-fg-brightness-" + mode) || "100", 10);
   const root = document.documentElement;
   const themeFg = getComputedStyle(root).getPropertyValue("--fg-theme").trim();
   if (!base && b >= 100) {
@@ -138,10 +247,21 @@ function applyBodyColor() {
   root.style.setProperty("--fg", _dim(baseColor, b / 100));
 }
 function applyUserColors() {
+  const mode = _userColorMode();
+  const root = document.documentElement;
   ["--h1-color","--h2-color","--h3-color","--h4-color"].forEach(k => {
-    const v = localStorage.getItem("md-preview-" + k);
-    if (v) document.documentElement.style.setProperty(k, v);
+    const v = localStorage.getItem("md-preview-" + k + "-" + mode);
+    if (v) root.style.setProperty(k, v);
+    else root.style.removeProperty(k);  // 未設定→テーマ既定(:rootのvar(--heading))へ戻す
   });
+  // インラインコード色(--accent)。未設定ならテーマ既定(--accent-theme)へ戻す。
+  const ac = localStorage.getItem("md-preview--accent-" + mode);
+  if (ac) {
+    root.style.setProperty("--accent", ac);
+  } else {
+    const acTheme = getComputedStyle(root).getPropertyValue("--accent-theme").trim();
+    if (acTheme) root.style.setProperty("--accent", acTheme);
+  }
   applyBodyColor();
 }
 applyUserColors();

@@ -7,6 +7,7 @@ function __processContent() {
     const div = document.createElement("div");
     div.className = "mermaid";
     div.textContent = code.textContent;
+    div.dataset.src = code.textContent;  // テーマ切替時の再描画用に元ソースを保持
     code.parentElement.replaceWith(div);
   });
   document.querySelectorAll("#mdContent pre code").forEach((el) => {
@@ -20,10 +21,8 @@ function __processContent() {
     ? document.querySelectorAll("#mdContent .mermaid:not([data-processed])")
     : [];
   if (window.mermaid && blocks.length) {
-    if (!window.__mermaidInit) {
-      mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
-      window.__mermaidInit = true;
-    }
+    // テーマの明暗に応じて毎回初期化（light=default / dark を切替反映）。
+    mermaid.initialize({ startOnLoad: false, theme: __mermaidTheme(), securityLevel: "loose" });
     // mermaid.run({querySelector}) はラベルをインプレース測定するため、本文の最大横幅
     // (--max-width) が図の自然幅より狭いと横長フローチャートがレイアウト崩壊して空SVGに
     // なる。render() は自前の非制約コンテナで測定するので影響を受けない。図ごとに render()
@@ -46,6 +45,22 @@ function __processContent() {
   }
 }
 window.__processContent = __processContent;
+
+// 現在のアプリテーマの明暗から mermaid テーマ（default=light / dark）を決める。
+function __mermaidTheme() {
+  const t = THEMES[localStorage.getItem("md-preview-theme") || "monokai"];
+  return (t && t.dark === false) ? "default" : "dark";
+}
+// テーマ切替時、既存の mermaid 図を元ソースから再描画して明暗を反映する。
+window.__rerenderMermaid = function() {
+  if (!window.mermaid) return;
+  document.querySelectorAll("#mdContent .mermaid[data-processed]").forEach(function(el) {
+    if (el.dataset.src != null) el.textContent = el.dataset.src;  // 描画済みSVG→元ソースへ戻す
+    el.removeAttribute("data-processed");
+  });
+  __processContent();
+};
+
 __processContent();
 
 // --- Settings modal ---
@@ -75,12 +90,7 @@ __processContent();
 
   function renderThemeSelect() {
     themeSelect.innerHTML = "";
-    const allThemes = Object.assign({}, THEMES);
-    const customTheme = localStorage.getItem("md-preview-custom-theme");
-    if (customTheme) {
-      allThemes.custom = Object.assign({ name: "Custom" }, JSON.parse(customTheme));
-    }
-    Object.entries(allThemes).forEach(([key, theme]) => {
+    Object.entries(THEMES).forEach(([key, theme]) => {
       const opt = document.createElement("option");
       opt.value = key;
       opt.textContent = theme.name;
@@ -92,11 +102,12 @@ __processContent();
   themeSelect.addEventListener("change", () => {
     const key = themeSelect.value;
     currentTheme = key;
-    const customTheme = localStorage.getItem("md-preview-custom-theme");
-    applyTheme(key === "custom" && customTheme ? JSON.parse(customTheme) : THEMES[key]);
-    applyUserColors();   // テーマで上書きされた--fg等のユーザー色を再適用（維持）
-    buildFgSelect();     // 本文色セレクトの既定表示を新テーマに合わせて更新
-    localStorage.setItem("md-preview-theme", key);
+    localStorage.setItem("md-preview-theme", key);  // 先に保存（ユーザー色のmode判定が新テーマを見る）
+    applyTheme(THEMES[key]);
+    syncCodeThemeToTheme(key);   // アプリテーマに対応するコードテーマへ自動追従
+    applyUserColors();   // 新テーマの明暗(mode)に応じたユーザー色 or テーマ既定を適用
+    refreshColorControls();      // 各色セレクト/明度スライダーを新modeの保存値で再構築
+    if (window.__rerenderMermaid) window.__rerenderMermaid();  // mermaidのlight/dark追従
     if (window._rebuildMinimap) window._rebuildMinimap();
   });
 
@@ -122,114 +133,14 @@ __processContent();
   });
   renderCodeThemeSelect();
 
-  // --- Color import ---
-  const colorImportArea = document.getElementById("colorImportArea");
-  const colorImportBtn = document.getElementById("colorImportBtn");
-  const colorImportError = document.getElementById("colorImportError");
-
-  function parseItermColors(xmlStr) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlStr, "text/xml");
-    if (doc.querySelector("parsererror")) throw new Error("Invalid XML");
-    const dict = doc.querySelector("plist > dict");
-    if (!dict) throw new Error("Invalid plist structure");
-
-    const colors = {};
-    const keys = dict.children;
-    for (let i = 0; i < keys.length; i++) {
-      if (keys[i].tagName === "key") {
-        const name = keys[i].textContent;
-        const val = keys[i+1];
-        if (val && val.tagName === "dict") {
-          if (name.includes("(Dark)") || name.includes("(Light)")) continue;
-          const entries = val.children;
-          const c = {};
-          for (let j = 0; j < entries.length; j++) {
-            if (entries[j].tagName === "key") {
-              c[entries[j].textContent] = entries[j+1] ? entries[j+1].textContent : "";
-            }
-          }
-          const r = parseFloat(c["Red Component"] || 0);
-          const g = parseFloat(c["Green Component"] || 0);
-          const b = parseFloat(c["Blue Component"] || 0);
-          const hex = "#" + [r, g, b].map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
-          colors[name] = hex;
-        }
-      }
-    }
-    return colors;
+  // アプリテーマに対応するコードテーマへ自動追従（フル連動）。
+  function syncCodeThemeToTheme(themeKey) {
+    const t = THEMES[themeKey];
+    if (!t || !t.code) return;
+    applyCodeTheme(t.code);
+    localStorage.setItem("md-preview-code-theme", t.code);
+    if (codeThemeSelect) codeThemeSelect.value = t.code;
   }
-
-  function lightenColor(hex, amount) {
-    const r = Math.min(255, parseInt(hex.slice(1, 3), 16) + amount);
-    const g = Math.min(255, parseInt(hex.slice(3, 5), 16) + amount);
-    const b = Math.min(255, parseInt(hex.slice(5, 7), 16) + amount);
-    return "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
-  }
-
-  function mapItermToTheme(colors) {
-    const bg = colors["Background Color"] || "#272822";
-    const fg = colors["Foreground Color"] || "#d8d8d2";
-    const ansi0 = colors["Ansi 0 Color"] || "#1e1f1c";
-    const ansi3 = colors["Ansi 3 Color"] || "#d4a76a";
-    const ansi4 = colors["Ansi 4 Color"] || "#66c2b5";
-    const ansi5 = colors["Ansi 5 Color"] || "#ae9fcc";
-    const ansi8 = colors["Ansi 8 Color"] || "#3e3f3a";
-    return {
-      name: "Custom",
-      "--bg": bg,
-      "--fg": fg,
-      "--code-bg": ansi0,
-      "--border": ansi8,
-      "--blockquote-fg": ansi8,
-      "--blockquote-border": ansi8,
-      "--link": ansi4,
-      "--file-path": ansi8,
-      "--table-stripe": lightenColor(bg, 10),
-      "--heading": ansi3,
-      "--accent": ansi5,
-    };
-  }
-
-  colorImportBtn.addEventListener("click", () => {
-    colorImportError.style.display = "none";
-    try {
-      const xml = colorImportArea.value.trim();
-      if (!xml) throw new Error("Paste .itermcolors XML first");
-      const colors = parseItermColors(xml);
-      // Save full palette for heading color selects
-      localStorage.setItem("md-preview-palette", JSON.stringify(colors));
-      const theme = mapItermToTheme(colors);
-      localStorage.setItem("md-preview-custom-theme", JSON.stringify(theme));
-      localStorage.setItem("md-preview-theme", "custom");
-      currentTheme = "custom";
-      applyTheme(theme);
-      renderThemeSelect();
-      // Auto-assign heading colors from palette (skip bg-like colors)
-      const bg = colors["Background Color"] || "";
-      const candidates = Object.entries(colors)
-        .filter(([name, hex]) => !name.includes("Background") && hex !== bg
-          && !name.includes("Ansi 0") && !name.includes("Ansi 8"))
-        .map(([name, hex]) => hex);
-      // Pick 4 distinct colors spread across the palette
-      const unique = [...new Set(candidates)];
-      const pick = (i) => unique.length > 0 ? unique[i % unique.length] : theme["--heading"];
-      const step = Math.max(1, Math.floor(unique.length / 4));
-      const hVars = ["--h1-color", "--h2-color", "--h3-color", "--h4-color"];
-      hVars.forEach((v, i) => {
-        const c = pick(i * step);
-        document.documentElement.style.setProperty(v, c);
-        localStorage.setItem("md-preview-" + v, c);
-      });
-      buildHeadingSelects();
-      applyUserColors();   // 本文色(--fg)のユーザー上書きを維持
-      buildFgSelect();
-      if (window._rebuildMinimap) window._rebuildMinimap();
-    } catch (e) {
-      colorImportError.textContent = e.message;
-      colorImportError.style.display = "block";
-    }
-  });
 
   // --- Heading color settings ---
   const headingDefs = [
@@ -240,27 +151,16 @@ __processContent();
   ];
 
   function getPalette() {
-    // Build palette from current theme's CSS variables + imported palette
+    // 現在テーマのCSS変数から見出し色・本文色の選択肢パレットを構築する。
     const palette = [];
-    const imported = localStorage.getItem("md-preview-palette");
-    if (imported) {
-      try {
-        const p = JSON.parse(imported);
-        Object.entries(p).forEach(([name, hex]) => {
-          palette.push({ name: name, hex: hex });
-        });
-      } catch(e) {}
-    }
-    if (palette.length === 0) {
-      // Fallback: extract from current theme
-      const root = getComputedStyle(document.documentElement);
-      const vars = ["--fg","--heading","--link","--accent","--blockquote-fg","--border","--bg","--code-bg"];
-      const names = ["Foreground","Heading","Link","Accent","Muted","Border","Background","Code BG"];
-      vars.forEach((v, i) => {
-        const val = root.getPropertyValue(v).trim();
-        if (val) palette.push({ name: names[i], hex: val });
-      });
-    }
+    const root = getComputedStyle(document.documentElement);
+    // 文字色として使える色のみ（背景/境界系は見出し等が背景に溶けるため除外）。
+    const vars = ["--fg","--heading","--link","--accent","--blockquote-fg"];
+    const names = ["Foreground","Heading","Link","Accent","Muted"];
+    vars.forEach((v, i) => {
+      const val = root.getPropertyValue(v).trim();
+      if (val) palette.push({ name: names[i], hex: val });
+    });
     return palette;
   }
 
@@ -268,7 +168,7 @@ __processContent();
     const palette = getPalette();
     headingDefs.forEach(h => {
       const sel = document.getElementById(h.id);
-      const saved = localStorage.getItem("md-preview-" + h.cssVar);
+      const saved = localStorage.getItem("md-preview-" + h.cssVar + "-" + _userColorMode());
       sel.innerHTML = "";
       palette.forEach(p => {
         const opt = document.createElement("option");
@@ -291,7 +191,7 @@ __processContent();
     document.getElementById(h.id).addEventListener("change", (e) => {
       const val = e.target.value;
       document.documentElement.style.setProperty(h.cssVar, val);
-      localStorage.setItem("md-preview-" + h.cssVar, val);
+      localStorage.setItem("md-preview-" + h.cssVar + "-" + _userColorMode(), val);
       e.target.style.color = val;  // セレクトの表示色も追従
     });
   });
@@ -302,7 +202,7 @@ __processContent();
   const fgSelect = document.getElementById("fgColor");
   function buildFgSelect() {
     const palette = getPalette();
-    const saved = localStorage.getItem("md-preview--fg");
+    const saved = localStorage.getItem("md-preview--fg-" + _userColorMode());
     const cur = saved || getComputedStyle(document.documentElement).getPropertyValue("--fg").trim();
     fgSelect.innerHTML = "";
     let matched = false;
@@ -326,7 +226,7 @@ __processContent();
     fgSelect.style.color = fgSelect.value;  // 設定中の色をセレクト自体の文字色に反映
   }
   fgSelect.addEventListener("change", (e) => {
-    localStorage.setItem("md-preview--fg", e.target.value);  // 選択色（base）を保存
+    localStorage.setItem("md-preview--fg-" + _userColorMode(), e.target.value);  // 選択色（base）を明暗別に保存
     applyBodyColor();                                        // 明度を反映して適用
     e.target.style.color = e.target.value;                   // セレクトの表示色も追従
     if (window._rebuildMinimap) window._rebuildMinimap();
@@ -336,16 +236,50 @@ __processContent();
   // 本文色の明度（まぶしさ調整）スライダー
   const fgBrightness = document.getElementById("fgBrightness");
   const fgBrightnessValue = document.getElementById("fgBrightnessValue");
-  const savedFgB = parseInt(localStorage.getItem("md-preview-fg-brightness") || "100", 10);
+  const savedFgB = parseInt(localStorage.getItem("md-preview-fg-brightness-" + _userColorMode()) || "100", 10);
   fgBrightness.value = savedFgB;
   fgBrightnessValue.textContent = savedFgB + "%";
   fgBrightness.addEventListener("input", (e) => {
     const v = parseInt(e.target.value, 10);
     fgBrightnessValue.textContent = v + "%";
-    localStorage.setItem("md-preview-fg-brightness", v);
+    localStorage.setItem("md-preview-fg-brightness-" + _userColorMode(), v);
     applyBodyColor();
     if (window._rebuildMinimap) window._rebuildMinimap();
   });
+
+  // --- Inline code color (--accent) --- パレットから選択。明暗別に保存。
+  const codeColorSelect = document.getElementById("codeColor");
+  function buildCodeColorSelect() {
+    const palette = getPalette();
+    const saved = localStorage.getItem("md-preview--accent-" + _userColorMode());
+    const cur = saved || getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    codeColorSelect.innerHTML = "";
+    let matched = false;
+    palette.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.hex;
+      opt.textContent = p.name + " (" + p.hex + ")";
+      opt.style.color = p.hex;
+      if (cur && cur.toLowerCase() === p.hex.toLowerCase()) { opt.selected = true; matched = true; }
+      codeColorSelect.appendChild(opt);
+    });
+    // パレットに無い現在値（カスタム）も選べるよう末尾に追加
+    if (cur && !matched) {
+      const opt = document.createElement("option");
+      opt.value = cur;
+      opt.textContent = "Current (" + cur + ")";
+      opt.style.color = cur;
+      opt.selected = true;
+      codeColorSelect.appendChild(opt);
+    }
+    codeColorSelect.style.color = codeColorSelect.value;
+  }
+  codeColorSelect.addEventListener("change", (e) => {
+    localStorage.setItem("md-preview--accent-" + _userColorMode(), e.target.value);
+    document.documentElement.style.setProperty("--accent", e.target.value);
+    e.target.style.color = e.target.value;
+  });
+  buildCodeColorSelect();
 
   document.getElementById("shuffleHeadingBtn").addEventListener("click", () => {
     const palette = getPalette();
@@ -360,10 +294,20 @@ __processContent();
     hVars.forEach((v, i) => {
       const c = shuffled[i % shuffled.length].hex;
       document.documentElement.style.setProperty(v, c);
-      localStorage.setItem("md-preview-" + v, c);
+      localStorage.setItem("md-preview-" + v + "-" + _userColorMode(), c);
     });
     buildHeadingSelects();
   });
+
+  // テーマ切替時に各色コントロールを現在の明暗(mode)の保存値で再構築する。
+  function refreshColorControls() {
+    buildFgSelect();
+    buildHeadingSelects();
+    buildCodeColorSelect();
+    const fb = parseInt(localStorage.getItem("md-preview-fg-brightness-" + _userColorMode()) || "100", 10);
+    fgBrightness.value = fb;
+    fgBrightnessValue.textContent = fb + "%";
+  }
 
   // --- Layout settings ---
   const listMarginSlider = document.getElementById("listMarginSlider");

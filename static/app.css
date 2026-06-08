@@ -17,6 +17,14 @@
     --list-margin: 16px;
     --minimap-width: 80px;
     --toc-width: 240px;
+    /* UI上のホバー/ハイライト/スクロールバー等の重ね色。ダーク既定は白系。
+       ライトテーマは各THEMESで黒系(rgba(0,0,0,..))に上書きする。 */
+    --overlay-faint: rgba(255,255,255,0.02);
+    --overlay-active: rgba(255,255,255,0.04);
+    --overlay-hover: rgba(255,255,255,0.06);
+    --overlay-soft: rgba(255,255,255,0.16);
+    --overlay-medium: rgba(255,255,255,0.20);
+    --overlay-strong: rgba(255,255,255,0.30);
   }
   body {
     max-width: 800px;
@@ -38,7 +46,7 @@
     color: var(--accent);
     padding: 0.2em 0.4em;
     border-radius: 3px;
-    font-size: 97%;
+    font-size: 100%;
   }
   pre {
     background: var(--code-bg);
@@ -164,20 +172,6 @@
     outline: none;
   }
   .theme-select:focus { border-color: var(--link); }
-  .settings-textarea {
-    width: 100%;
-    height: 100px;
-    background: var(--bg);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 8px;
-    font-family: monospace;
-    font-size: 12px;
-    resize: vertical;
-    box-sizing: border-box;
-  }
-  .settings-textarea:focus { outline: 1px solid var(--link); }
   .settings-btn-apply {
     margin-top: 8px;
     padding: 6px 16px;
@@ -189,17 +183,6 @@
     font-size: 13px;
   }
   .settings-btn-apply:hover { opacity: 0.9; }
-  .settings-error {
-    color: #f44;
-    font-size: 12px;
-    margin-top: 4px;
-    display: none;
-  }
-  .settings-ref-link {
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  .settings-ref-link a { color: var(--link); }
   .settings-slider-row {
     display: flex;
     align-items: center;
@@ -248,7 +231,7 @@
     border-radius: 2px;
     vertical-align: middle;
     margin-right: 4px;
-    border: 1px solid rgba(255,255,255,0.2);
+    border: 1px solid var(--overlay-medium);
   }
   /* minimap */
   .minimap {
@@ -274,17 +257,17 @@
     position: absolute;
     left: 0;
     right: 0;
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: var(--overlay-medium);
+    border: 1px solid var(--overlay-strong);
     pointer-events: none;
     min-height: 10px;
   }
   /* スリムで背景に溶け込むスクロールバー（WebKit + Firefox） */
-  * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }
+  * { scrollbar-width: thin; scrollbar-color: var(--overlay-soft) transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.30); }
+  ::-webkit-scrollbar-thumb { background: var(--overlay-soft); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--overlay-strong); }
   ::-webkit-scrollbar-corner { background: transparent; }
   /* TOC */
   .toc {
@@ -350,7 +333,7 @@
     align-items: center;
     box-sizing: border-box;
     /* ホバー時の淡いハイライト(0.06)を code-bg に合成し、行の見た目に揃える */
-    background: linear-gradient(rgba(255,255,255,0.06), rgba(255,255,255,0.06)), var(--code-bg);
+    background: linear-gradient(var(--overlay-hover), var(--overlay-hover)), var(--code-bg);
     color: var(--fg);
     white-space: nowrap;
     pointer-events: none;
@@ -397,12 +380,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  #paneOutline a:hover { opacity: 1; background: rgba(255,255,255,0.04); }
+  #paneOutline a:hover { opacity: 1; background: var(--overlay-hover); }
   #paneOutline a.active {
     opacity: 1;
     border-left-color: var(--link);
     color: var(--link);
-    background: rgba(255,255,255,0.03);
+    background: var(--overlay-active);
   }
   #paneOutline .toc-h1 { font-weight: 600; }
   #paneOutline .toc-h2 { padding-left: 18px; }
@@ -430,12 +413,12 @@
     line-height: 1.4;
     box-sizing: border-box;
   }
-  .tree-row:hover { opacity: 1; background: rgba(255,255,255,0.06); }
+  .tree-row:hover { opacity: 1; background: var(--overlay-hover); }
   .tree-file.active {
     opacity: 1;
     color: var(--link);
     border-left-color: var(--link);
-    background: rgba(255,255,255,0.04);
+    background: var(--overlay-active);
   }
   .tree-folder.collapsed > ul { display: none; }
   .tree-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -455,7 +438,7 @@
     opacity: 1;
     color: var(--link);
     border-left-color: var(--link);
-    background: rgba(255,255,255,0.04);
+    background: var(--overlay-active);
   }
   .tree-folder.collapsed.has-active > .tree-row .tree-icon { color: var(--link); opacity: 1; }
   /* ファイルが多いフォルダ: 直下のファイル群を固定高スクロール枠にまとめる。
@@ -467,7 +450,7 @@
     margin: 2px 4px 4px 0;
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: rgba(255,255,255,0.02);
+    background: var(--overlay-faint);
   }
   .tree-filebox > ul { padding: 2px 0; }
   /* ツリーのインデントとガイド: フォルダの中身（ネストした子ul）を1段下げ、
