@@ -14,7 +14,6 @@ import hashlib
 import html
 import json
 import os
-import subprocess
 import sys
 import threading
 import webbrowser
@@ -206,21 +205,37 @@ def _scan_dir_markdown(base: Path) -> dict:
     return {"root": root.as_posix(), "files": files}
 
 
+# scan_root_for の結果キャッシュ（base ディレクトリ → 走査ルート）。
+# 走査ルートはセッション中まず変わらないため、base単位でキャッシュして
+# 1ページ表示で /view・/files・/render から繰り返される探索を初回1回に抑える。
+_scan_root_cache: dict[str, Path] = {}
+
+
+def _find_repo_top(base: Path) -> Path | None:
+    """baseから親方向に`.git`（ディレクトリ or worktree用ファイル）を探し、
+    見つかればそれを含むディレクトリ（=リポジトリのトップ階層）を返す。
+    `git rev-parse --show-toplevel`の純Python版。git.exe不要・起動コストゼロ。
+    見つからなければNone。"""
+    for d in (base, *base.parents):
+        if (d / ".git").exists():
+            return d
+    return None
+
+
 def scan_root_for(filepath: str) -> Path:
     """走査ルート（=タブタイトルに使う最上位ディレクトリ）を返す。
-    gitリポジトリ内ならトップ階層（`git rev-parse --show-toplevel`）、
-    git管理外/gitが無ければ開いたファイルのフォルダ。"""
+    gitリポジトリ内ならトップ階層（親方向に`.git`を探索）、
+    git管理外なら開いたファイルのフォルダ。
+
+    git.exeは使わず純Pythonで判定する（サブプロセス起動のコスト・コンソール
+    ちらつき・タイムアウトを回避）。結果はbaseディレクトリ単位でキャッシュする。"""
     base = Path(filepath).parent
-    scan_root = base
-    try:
-        top = subprocess.run(
-            ["git", "-C", str(base), "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, encoding="utf-8", timeout=5,
-        )
-        if top.returncode == 0 and top.stdout.strip():
-            scan_root = Path(top.stdout.strip())
-    except (OSError, subprocess.SubprocessError):
-        pass
+    key = str(base)
+    cached = _scan_root_cache.get(key)
+    if cached is not None:
+        return cached
+    scan_root = _find_repo_top(base) or base
+    _scan_root_cache[key] = scan_root
     return scan_root
 
 
