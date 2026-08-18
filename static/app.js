@@ -1,6 +1,24 @@
 // 現在表示中ファイルの状態（シームレス切替で書き換わる）。各モジュールはここを参照する。
 window.__md = JSON.parse(document.getElementById("md-data").textContent);
 
+// mermaid.min.js(3.3MB)は同期読み込みだとパース/コンパイルだけで毎ページ重いため、
+// mermaidブロックが実際にあるページでのみ動的に読み込む（参照先はローカル/staticの
+// ままなのでオフライン動作は維持）。読み込みは1回だけ、以後はPromiseを共有する。
+let __mermaidLoadPromise = null;
+function __ensureMermaid() {
+  if (window.mermaid) return Promise.resolve();
+  if (!__mermaidLoadPromise) {
+    __mermaidLoadPromise = new Promise(function(resolve, reject) {
+      const s = document.createElement("script");
+      s.src = "/static/mermaid.min.js";
+      s.onload = function() { window.mermaid ? resolve() : reject(new Error("mermaid not defined")); };
+      s.onerror = function() { reject(new Error("mermaid.min.js load failed")); };
+      document.head.appendChild(s);
+    });
+  }
+  return __mermaidLoadPromise;
+}
+
 // --- コンテンツ後処理: mermaid変換 + hljs + ミニマップ再構築（切替時に再実行） ---
 function __processContent() {
   document.querySelectorAll("#mdContent pre > code.language-mermaid").forEach((code) => {
@@ -17,10 +35,12 @@ function __processContent() {
     if (window.__ensureBottomRoom) window.__ensureBottomRoom();  // 図の描画後に余白を再算定
     if (window._rebuildMinimap) window._rebuildMinimap();        // 描画完了後に構築（clone競合回避）
   };
-  const blocks = window.mermaid
-    ? document.querySelectorAll("#mdContent .mermaid:not([data-processed])")
-    : [];
-  if (window.mermaid && blocks.length) {
+  const blocks = document.querySelectorAll("#mdContent .mermaid:not([data-processed])");
+  if (!blocks.length) {
+    afterMermaid();
+    return;
+  }
+  __ensureMermaid().then(function() {
     // テーマの明暗に応じて毎回初期化（light=default / dark を切替反映）。
     mermaid.initialize({ startOnLoad: false, theme: __mermaidTheme(), securityLevel: "loose" });
     // mermaid.run({querySelector}) はラベルをインプレース測定するため、本文の最大横幅
@@ -40,9 +60,10 @@ function __processContent() {
         console.error("mermaid render failed:", e);
       }).finally(settle);
     });
-  } else {
-    afterMermaid();
-  }
+  }).catch(function(e) {
+    console.error(e);
+    afterMermaid();  // 読み込み失敗時も後続処理（ミニマップ等）は止めない
+  });
 }
 window.__processContent = __processContent;
 
@@ -415,6 +436,7 @@ __processContent();
 
 (function() {
   setInterval(async () => {
+    if (document.hidden) return;  // 非表示タブはポーリングしない（復帰後の次tickで検知）
     if (document.body.classList.contains("editing")) return;
     try {
       const res = await fetch("/hash?path=" + encodeURIComponent(window.__md.path));
@@ -947,9 +969,10 @@ __processContent();
     }
   }
 
-  // 未処理の mermaid 図がある間は初期構築を遅延し、mermaid.run().finally() 内の
+  // 未処理の mermaid 図がある間は初期構築を遅延し、描画完了後の afterMermaid 内の
   // _rebuildMinimap() に任せる（描画途中の clone 競合を避ける）。
-  if (!(window.mermaid && document.querySelector(".mermaid:not([data-processed])"))) {
+  // ※mermaid本体は遅延読み込みのため window.mermaid の有無では判定しない。
+  if (!document.querySelector(".mermaid:not([data-processed])")) {
     buildMinimapContent();
     applyScale();
   }

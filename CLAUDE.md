@@ -36,7 +36,11 @@ Markdown Preview Server -- ローカルのMarkdownファイルをブラウザで
 
 ## Key decisions
 
-- WebSocketではなくMD5ポーリング（1秒間隔）で変更検知。stdlib依存のみでシンプルに保つ。
+- WebSocketではなくMD5ポーリング（1秒間隔）で変更検知。stdlib依存のみでシンプルに保つ。ハッシュは全エンドポイント（/hash・/render・/save応答）でファイル生bytesのMD5に統一（/hashはレンダリング不要で軽量）。非表示タブはポーリングしない。
+- HTTP/1.1 + Keep-Alive（`protocol_version = "HTTP/1.1"`）。全応答にContent-Length必須（`_send`ヘルパー経由で送る）。ブラウザに渡すURLは`localhost`ではなく`127.0.0.1`（localhostはIPv6→IPv4フォールバックで接続毎に約200msかかるため）。
+- セキュリティ: 全リクエストでHost検証（DNSリバインディング対策）、POSTはOrigin検証（外部サイトからの/save CSRF対策）、/staticは解決後パスの包含チェック（トラバーサル対策）。許可ホストは127.0.0.1/localhost/::1のみ。
+- ファイル読込はUTF-8(BOM可)→CP932→errors="replace"の順で耐性を持たせる。/saveは行末（LF/CRLF）を既存ファイルに合わせて保持し、一時ファイル+`os.replace`でアトミックに書く。
+- mermaid.min.js（3.3MB）はheadで同期読み込みせず、mermaidブロックがあるページのみapp.jsが動的ロード（`__ensureMermaid`）。
 - highlight.jsとmonokaiテーマはCDNではなくローカル配置（オフライン動作対応）。
 - `md_open.pyw`は`DETACHED_PROCESS`フラグでサーバーをバックグラウンド起動。
 - UIのCSS/JSは`static/app.css`・`app.early.js`・`app.js`に外出し（`HTML_TEMPLATE`はHTML骨格のみ）。`.format()`をやめ`__MD_*__`マーカーの`.replace()`で展開するため、CSS/JS内の波括弧の二重化（`{{}}`）は不要。`app.early.js`はhead同期実行（FOUC回避）、`app.js`はbody末尾。両者はクラシックスクリプトのため、`app.early.js`が定義するトップレベルconst/関数（THEMES/applyTheme等）を`app.js`が共有参照する。外出しアセットは`?v=<mtime>`でキャッシュバスティング。

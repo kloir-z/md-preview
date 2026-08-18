@@ -9,15 +9,12 @@ Usage:
 """
 
 import argparse
-import asyncio
 import hashlib
 import html
 import json
 import os
-import sys
-import threading
 import webbrowser
-from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, unquote, quote
 
@@ -25,7 +22,8 @@ import mimetypes
 import markdown
 
 from config import DEFAULT_PORT
-STATIC_DIR = Path(__file__).parent / "static"
+# /static のパストラバーサル判定（is_relative_to）のため解決済み絶対パスで持つ
+STATIC_DIR = (Path(__file__).parent / "static").resolve()
 
 HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -37,7 +35,6 @@ HTML_TEMPLATE = """\
 <link rel="stylesheet" id="hljsTheme" href="/static/hljs/github-dark.min.css">
 <link rel="stylesheet" href="/static/app.css?v=__MD_ASSET_VER__">
 <script src="/static/highlight.min.js"></script>
-<script src="/static/mermaid.min.js"></script>
 <script src="/static/app.early.js?v=__MD_ASSET_VER__"></script>
 </head>
 <body>
@@ -158,15 +155,44 @@ def _asset_version() -> str:
     return str(latest)
 
 
+def _read_text_lenient(path: Path) -> tuple[str, bytes]:
+    """ファイルをbytesで読み、UTF-8(BOM可)→CP932の順で試してデコードする。
+    どちらでも読めなければerrors="replace"で落とさず表示する
+    （非UTF-8ファイルでUnicodeDecodeErrorになり応答不能だったのを解消）。
+    返り値は (テキスト, 生bytes)。ハッシュは生bytesから計算する。"""
+    data = path.read_bytes()
+    for enc in ("utf-8-sig", "cp932"):
+        try:
+            return data.decode(enc), data
+        except UnicodeDecodeError:
+            pass
+    return data.decode("utf-8", errors="replace"), data
+
+
+def file_hash(filepath: str) -> str:
+    """ファイル生bytesのMD5（変更検知ポーリング用）。無い/読めない場合は空文字。
+
+    以前はtext.encode()のMD5だったが、/hashが毎秒Markdownをフルレンダリング
+    していた無駄をなくすため、レンダリング不要な生bytesのMD5に統一した。
+    """
+    try:
+        return hashlib.md5(Path(filepath).read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
 def render_markdown(filepath: str) -> tuple[str, str]:
-    """Markdownファイルを読み込んでHTML + ハッシュを返す"""
+    """Markdownファイルを読み込んでHTML + ハッシュ（生bytesのMD5）を返す"""
     path = Path(filepath)
     if not path.exists():
-        return f"<h1>File not found</h1><p>{filepath}</p>", ""
-    text = path.read_text(encoding="utf-8")
-    html = markdown.markdown(text, extensions=md_extensions)
-    content_hash = hashlib.md5(text.encode()).hexdigest()
-    return html, content_hash
+        return f"<h1>File not found</h1><p>{html.escape(filepath)}</p>", ""
+    try:
+        text, data = _read_text_lenient(path)
+    except OSError as e:
+        return f"<h1>Read error</h1><p>{html.escape(str(e))}</p>", ""
+    # markdownライブラリに渡す前に行末をLFへ正規化（CRLFファイル対策）
+    html_out = markdown.markdown(text.replace("\r\n", "\n"), extensions=md_extensions)
+    return html_out, hashlib.md5(data).hexdigest()
 
 
 # ファイルシステム走査時に降りないディレクトリ（重い/無関係なもの）
@@ -267,16 +293,66 @@ def list_repo_markdown(filepath: str) -> dict:
 
 
 class MarkdownHandler(BaseHTTPRequestHandler):
+    # HTTP/1.1でKeep-Aliveを有効化。HTTP/1.0は接続使い捨てで、ページ表示のたびに
+    # 全リクエスト（HTML/CSS/JS/ポーリング）がTCP接続を張り直していた。
+    # 1.1では全応答にContent-Lengthが必須（無いとブラウザが応答完了を判定できない）。
+    protocol_version = "HTTP/1.1"
+    # ブラウザが掴んだままのアイドル接続からスレッドを解放する
+    timeout = 75
+
+    # ローカル専用サーバーだがブラウザ経由で外部サイトから攻撃可能なため検証する。
+    #  - Hostチェック: DNSリバインディング対策（攻撃者ドメインを127.0.0.1に解決させ
+    #    同一オリジン扱いで/content等から任意ファイルを読み取る手口を防ぐ）
+    #  - Originチェック(POST): CSRF対策（外部サイトからの/save POSTによる
+    #    任意ファイル書き込みを防ぐ）
+    _ALLOWED_HOSTNAMES = {"127.0.0.1", "localhost", "::1"}
+
+    def _host_ok(self) -> bool:
+        host = self.headers.get("Host", "")
+        try:
+            hostname = urlparse(f"//{host}").hostname or ""
+        except ValueError:
+            return False
+        return hostname in self._ALLOWED_HOSTNAMES
+
+    def _origin_ok(self) -> bool:
+        origin = self.headers.get("Origin")
+        if not origin:  # 同一オリジンのfetchや非ブラウザクライアントはOriginを送らないことがある
+            return True
+        try:
+            hostname = urlparse(origin).hostname or ""
+        except ValueError:
+            return False
+        return hostname in self._ALLOWED_HOSTNAMES
+
+    def _send(self, code: int, ctype: str, body: bytes, cache: str = "no-store"):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", cache)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.write(body)
+
+    def _query_path(self, parsed) -> str | None:
+        """クエリのpathパラメータを返す。無ければ400を送ってNone。
+        parse_qsがデコード済みのため、以前あった二重unquoteは行わない
+        （%を含むファイル名が壊れるため）。"""
+        filepath = parse_qs(parsed.query).get("path", [None])[0]
+        if not filepath:
+            self.send_error(400, "Missing path parameter")
+            return None
+        return filepath
+
     def do_GET(self):
+        if not self._host_ok():
+            self.send_error(403, "Forbidden")
+            return
         parsed = urlparse(self.path)
 
         if parsed.path == "/view":
-            params = parse_qs(parsed.query)
-            filepath = params.get("path", [None])[0]
-            if not filepath:
-                self.send_error(400, "Missing path parameter")
+            filepath = self._query_path(parsed)
+            if filepath is None:
                 return
-            filepath = unquote(filepath)
             html_content, content_hash = render_markdown(filepath)
             title = _title_for(filepath)
             # per-request データは #md-data(JSON) として注入。CSS/JS を外出ししたので
@@ -292,71 +368,47 @@ class MarkdownHandler(BaseHTTPRequestHandler):
                     .replace("__MD_FILEPATH__", html.escape(filepath))
                     .replace("__MD_DATA__", md_data)
                     .replace("__MD_CONTENT__", html_content))
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.write(page.encode())
+            self._send(200, "text/html; charset=utf-8", page.encode())
             return
 
         if parsed.path == "/hash":
-            params = parse_qs(parsed.query)
-            filepath = params.get("path", [None])[0]
-            if not filepath:
-                self.send_error(400, "Missing path parameter")
+            filepath = self._query_path(parsed)
+            if filepath is None:
                 return
-            filepath = unquote(filepath)
-            _, content_hash = render_markdown(filepath)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.write(json.dumps({"hash": content_hash}).encode())
+            self._send(200, "application/json", json.dumps({"hash": file_hash(filepath)}).encode())
             return
 
         if parsed.path == "/content":
-            params = parse_qs(parsed.query)
-            filepath = params.get("path", [None])[0]
-            if not filepath:
-                self.send_error(400, "Missing path parameter")
+            filepath = self._query_path(parsed)
+            if filepath is None:
                 return
-            filepath = unquote(filepath)
             path = Path(filepath)
             if not path.exists():
                 self.send_error(404, "File not found")
                 return
-            text = path.read_text(encoding="utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.end_headers()
-            self.write(text.encode("utf-8"))
+            try:
+                text, _ = _read_text_lenient(path)
+            except OSError as e:
+                self.send_error(500, f"Read failed: {e}")
+                return
+            self._send(200, "text/plain; charset=utf-8", text.encode("utf-8"))
             return
 
         if parsed.path == "/files":
-            params = parse_qs(parsed.query)
-            filepath = params.get("path", [None])[0]
-            if not filepath:
-                self.send_error(400, "Missing path parameter")
+            filepath = self._query_path(parsed)
+            if filepath is None:
                 return
-            filepath = unquote(filepath)
             result = list_repo_markdown(filepath)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.write(json.dumps(result).encode())
+            self._send(200, "application/json", json.dumps(result).encode())
             return
 
         if parsed.path == "/render":
             # レンダリング済みHTML断片 + ハッシュをJSONで返す（シームレスなファイル切替用）。
-            params = parse_qs(parsed.query)
-            filepath = params.get("path", [None])[0]
-            if not filepath:
-                self.send_error(400, "Missing path parameter")
+            filepath = self._query_path(parsed)
+            if filepath is None:
                 return
-            filepath = unquote(filepath)
             html_content, content_hash = render_markdown(filepath)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.write(json.dumps({
+            self._send(200, "application/json", json.dumps({
                 "html": html_content,
                 "hash": content_hash,
                 "title": _title_for(filepath),
@@ -364,53 +416,67 @@ class MarkdownHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path.startswith("/static/"):
-            filename = parsed.path[len("/static/"):]
-            filepath = STATIC_DIR / filename
-            if filepath.exists() and filepath.is_file():
-                content_type = mimetypes.guess_type(str(filepath))[0] or "application/octet-stream"
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Cache-Control", "public, max-age=86400")
-                self.end_headers()
-                self.write(filepath.read_bytes())
-            else:
+            filename = unquote(parsed.path[len("/static/"):])
+            target = (STATIC_DIR / filename).resolve()
+            # パストラバーサル対策: 解決後のパスがstatic/配下でなければ拒否
+            # （以前は /static/../../../Windows/win.ini 等が素通りしていた）
+            if not (target.is_relative_to(STATIC_DIR) and target.is_file()):
                 self.send_error(404)
+                return
+            content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+            self._send(200, content_type, target.read_bytes(), cache="public, max-age=86400")
             return
 
         if parsed.path == "/open":
-            params = parse_qs(parsed.query)
-            filepath = params.get("path", [None])[0]
-            if not filepath:
-                self.send_error(400, "Missing path parameter")
+            filepath = self._query_path(parsed)
+            if filepath is None:
                 return
-            filepath = unquote(filepath)
             self.send_response(302)
-            self.send_header("Location", f"/view?path={filepath}")
+            # デコード済みの値を再エンコードして埋める（以前は生のまま埋めていて
+            # スペースや日本語を含むパスでLocationが壊れていた）
+            self.send_header("Location", f"/view?path={quote(filepath, safe='')}")
+            self.send_header("Content-Length", "0")
             self.end_headers()
             return
 
         self.send_error(404)
 
     def do_POST(self):
+        if not self._host_ok() or not self._origin_ok():
+            self.send_error(403, "Forbidden")
+            return
         parsed = urlparse(self.path)
 
         if parsed.path == "/save":
-            params = parse_qs(parsed.query)
-            filepath = params.get("path", [None])[0]
-            if not filepath:
-                self.send_error(400, "Missing path parameter")
+            filepath = self._query_path(parsed)
+            if filepath is None:
                 return
-            filepath = unquote(filepath)
             path = Path(filepath)
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 body = self.rfile.read(length).decode("utf-8")
-                path.write_text(body, encoding="utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                new_hash = hashlib.md5(body.encode()).hexdigest()
-                self.write(json.dumps({"ok": True, "hash": new_hash}).encode())
+                # 行末を既存ファイルに合わせる: textareaは常にLFを返すため、そのまま
+                # 書くとCRLFファイルの行末が保存のたびに全行書き換わってしまう。
+                # （以前はwrite_textの改行変換でWindowsでは常にCRLF化＝逆にLFファイルが壊れていた）
+                text = body.replace("\r\n", "\n")
+                try:
+                    existing = path.read_bytes() if path.exists() else b""
+                except OSError:
+                    existing = b""
+                if b"\r\n" in existing:
+                    text = text.replace("\n", "\r\n")
+                out = text.encode("utf-8")
+                # アトミック保存: 一時ファイルに書いてからos.replaceで差し替え
+                # （書き込み途中の失敗で元ファイルが破損するのを防ぐ）
+                tmp = path.with_name(path.name + ".md-save-tmp")
+                try:
+                    tmp.write_bytes(out)
+                    os.replace(tmp, path)
+                except BaseException:
+                    tmp.unlink(missing_ok=True)
+                    raise
+                new_hash = hashlib.md5(out).hexdigest()
+                self._send(200, "application/json", json.dumps({"ok": True, "hash": new_hash}).encode())
             except Exception as e:
                 self.send_error(500, f"Save failed: {e}")
             return
@@ -420,7 +486,8 @@ class MarkdownHandler(BaseHTTPRequestHandler):
     def write(self, data: bytes):
         try:
             self.wfile.write(data)
-        except BrokenPipeError:
+        except ConnectionError:
+            # クライアント切断（タブを閉じた・リロード中断等）は正常系として無視
             pass
 
     def log_message(self, format, *args):
@@ -437,13 +504,15 @@ def main():
     # ThreadingHTTPServer: 大きな静的ファイル(mermaid.min.js 3.3MB)配信中も
     # ブラウザのポーリング/他リクエストでブロックしないよう各接続を別スレッドで処理する。
     server = ThreadingHTTPServer(("127.0.0.1", args.port), MarkdownHandler)
-    print(f"Markdown server running at http://localhost:{args.port}")
+    print(f"Markdown server running at http://127.0.0.1:{args.port}")
 
     if args.file:
         filepath = str(Path(args.file).resolve())
         # パスにスペースやバックスラッシュ・日本語が含まれるとブラウザがURLを誤解釈して
         # 開けないため、必ずURLエンコードする（git管理外のDocuments配下等で頻発）。
-        url = f"http://localhost:{args.port}/view?path={quote(filepath, safe='')}"
+        # localhostだとブラウザがIPv6(::1)を先に試して約200msフォールバック待ちが発生する
+        # （サーバーは127.0.0.1のIPv4のみバインド）ため、127.0.0.1を直指定する。
+        url = f"http://127.0.0.1:{args.port}/view?path={quote(filepath, safe='')}"
         print(f"Opening: {url}")
         webbrowser.open(url)
 
